@@ -7,7 +7,7 @@ A Go based URL shortener
 - MongoDB (persistent db)
 - HTMX 
 
-## Proposed Architecture 
+## Proposed Final Architecture 
 ```
             +---------------------+
             |     User Requests   |
@@ -32,6 +32,24 @@ A Go based URL shortener
                       v
   +------------------------------------------+
   |       Persistent Storage (MongoDB)       |
+  +------------------------------------------+
+```
+
+## MVP Architecture 
+```
+            +---------------------+
+            |     User Requests   |
+            +---------------------+
+                      |
+                      v
+         +----------------------------+
+         |      URL Shortener API     |  
+         |        (Go Service)        |
+         +----------------------------+
+                      |
+                      v
+  +------------------------------------------+
+  |            Redis as a DB                 |
   +------------------------------------------+
 ```
 
