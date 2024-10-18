@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-redis/redis/v8"
+	"gochop-it/internal/utils"
 	"log"
 	"net/http"
 )
@@ -21,8 +22,25 @@ func main() {
 	}
 	fmt.Println("Connected to Redis!")
 
-	http.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
-		fmt.Fprintln(writer, "hello world")
+	// http.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
+	// 	fmt.Fprintln(writer, "hello world")
+	// 	// @TODO: serve index page
+	// })
+
+	http.HandleFunc("/shorten", func(writer http.ResponseWriter, req *http.Request) {
+		// Get the URL to shorten from the request
+		url := req.FormValue("url")
+		// Close the body when done
+		fmt.Println("Payload: ", url)
+		// Shorten the URL
+		shortURL := utils.GetShortCode()
+		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s",
+			shortURL)
+		fmt.Printf("Generated short URL: %s\n", fullShortURL)
+		// Generated short URL
+		fmt.Printf("Generated short URL: %s\n", shortURL) // Log to console
+		// @TODO: Store {shortcode: url} in Redis
+		// @TODO return the shortened URL in the UI
 	})
 
 	// Start the server on port 8080
