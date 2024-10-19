@@ -46,7 +46,10 @@ func main() {
 			return
 		}
 		tmpl := template.Must(template.ParseFiles(templatePath))
-		tmpl.Execute(writer, nil)
+		if err := tmpl.Execute(writer, nil); err != nil {
+			log.Printf("Error executing template: %v", err)
+			http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
+		}
 		fmt.Println("Serving index.html!")
 	})
 
@@ -104,6 +107,8 @@ func main() {
 	})
 
 	// Start the server on port 8080
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
 	fmt.Println("Server is running on http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
 }
