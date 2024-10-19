@@ -58,6 +58,8 @@ A Go based URL shortener
 
 - https://bitly.com/blog/how-to-make-a-url-shortener/
 
+- https://getstream.io/blog/url-shortener/ mvp
+
 ### TODO
 - [] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
 - [] testing 
