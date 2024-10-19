@@ -64,3 +64,4 @@ A Go based URL shortener
 - [] persistent storage 
 - [] caching layer 
 - [] better shortener algo
+- [] deployment
