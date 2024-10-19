@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v8"
+	"html/template"
 	"log"
 	"net/http"
-	"gochop-it/internal/utils"
+	"os"
+	"path/filepath"
+
+	"github.com/go-redis/redis/v8"
 	"gochop-it/internal/repository"
+	"gochop-it/internal/utils"
 )
 
 var ctx = context.Background()
@@ -25,12 +29,35 @@ func main() {
 	}
 	fmt.Println("Connected to Redis!")
 
-	// http.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
-	// 	fmt.Fprintln(writer, "hello world")
-	// 	// @TODO: serve index page
-	// })
+	// Fetch HTML template
+	// Get the current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("Could not get working directory: %v", err)
+	}
+	// Construct the absolute path to the HTML template
+	templatePath := filepath.Join(cwd, "internal", "templates", "index.html")
 
+	// GET localhost:8080/
+	http.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
+		// Check if the request is a GET request
+		if req.Method != http.MethodGet {
+			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
+			return
+		}
+		tmpl := template.Must(template.ParseFiles(templatePath))
+		tmpl.Execute(writer, nil)
+		fmt.Println("Serving index.html!")
+	})
+
+	// POST localhost:8080/shorten
 	http.HandleFunc("/shorten", func(writer http.ResponseWriter, req *http.Request) {
+		// Check if the request is a POST request
+		if req.Method != http.MethodPost {
+			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
+			return
+		}
+
 		// Get the URL to shorten from the request
 		url := req.FormValue("url")
 
@@ -42,12 +69,14 @@ func main() {
 		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s",
 			shortURL)
 		// Generated short URL
+		// Log to console
 		fmt.Printf("Generated short URL: %s\n", fullShortURL)
-		fmt.Printf("Generated short URL: %s\n", shortURL) // Log to console
-
-		// Set the key in Redis 
-		repository.SetKey(&ctx, dbClient, shortURL, url, 0)  
-		// @TODO return the shortened URL in the UI
+		fmt.Printf("Generated short URL: %s\n", shortURL)
+		// Set the key in Redis
+		repository.SetKey(&ctx, dbClient, shortURL, url, 0)
+		fmt.Fprintf(writer,
+			`<p class="mt-4 text-green-600">Shortened URL: <a 
+			href="/r/%s" class="underline">%s</a></p>`, shortURL, fullShortURL)
 	})
 
 	// Start the server on port 8080
