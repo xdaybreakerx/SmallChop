@@ -76,7 +76,31 @@ func main() {
 		repository.SetKey(&ctx, dbClient, shortURL, url, 0)
 		fmt.Fprintf(writer,
 			`<p class="mt-4 text-green-600">Shortened URL: <a 
-			href="/r/%s" class="underline">%s</a></p>`, shortURL, fullShortURL)
+                        href="/r/%s" class="underline">%s</a></p>`, shortURL, fullShortURL)
+	})
+
+	// localhost:8080/r/OTEzMDEyNw
+	http.HandleFunc("/r/{code}", func(writer http.ResponseWriter, req *http.Request) {
+		// Check if the request is a GET request
+		if req.Method != http.MethodGet {
+			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
+			return
+		}
+
+		key := req.PathValue("code")
+
+		if key == "" {
+			http.Error(writer, "Invalid URL", http.StatusBadRequest)
+			return
+		}
+
+		longURL, err := repository.GetLongURL(&ctx, dbClient, key)
+		if err != nil {
+			http.Error(writer, "Shotened URL not found", http.StatusNotFound)
+			return
+		}
+
+		http.Redirect(writer, req, longURL, http.StatusPermanentRedirect)
 	})
 
 	// Start the server on port 8080
