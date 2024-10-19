@@ -57,3 +57,10 @@ A Go based URL shortener
 - https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener
 
 - https://bitly.com/blog/how-to-make-a-url-shortener/
+
+### TODO
+- [] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
+- [] testing 
+- [] persistent storage 
+- [] caching layer 
+- [] better shortener algo
