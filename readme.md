@@ -1,13 +1,20 @@
-# GoChop.it 
+# GoChop.it
+
 A Go based URL shortener
 
 ## Tech Stack:
-- Go
-- Redis (caching)
-- MongoDB (persistent db)
-- HTMX 
 
-## Proposed Final Architecture 
+-   Go
+-   Redis (caching)
+-   MongoDB (persistent db)
+-   HTMX
+
+## Architecture
+
+<details>
+<summary>click here</summary>
+## Proposed Final Architecture
+
 ```
             +---------------------+
             |     User Requests   |
@@ -15,12 +22,12 @@ A Go based URL shortener
                       |
                       v
          +----------------------------+
-         |   Load Balancer (Optional) |  
+         |   Load Balancer (Optional) |
          +----------------------------+
                       |
                       v
          +----------------------------+
-         |      URL Shortener API     |  
+         |      URL Shortener API     |
          |        (Go Service)        |
          +----------------------------+
                       |
@@ -35,7 +42,8 @@ A Go based URL shortener
   +------------------------------------------+
 ```
 
-## MVP Architecture 
+## MVP Architecture
+
 ```
             +---------------------+
             |     User Requests   |
@@ -43,7 +51,7 @@ A Go based URL shortener
                       |
                       v
          +----------------------------+
-         |      URL Shortener API     |  
+         |      URL Shortener API     |
          |        (Go Service)        |
          +----------------------------+
                       |
@@ -53,31 +61,44 @@ A Go based URL shortener
   +------------------------------------------+
 ```
 
+</details>
+
 ### CI / CD
+
+<details>
+<summary>click here</summary>
 #### Pre-Commit (Local)
-- **Husky**
-  - Used to catch basic formatting, linting, and test failures before code is even committed. 
-  - This can be bypassed if necessary but act as a first line of defense.
+
+-   **Husky**
+    -   Used to catch basic formatting, linting, and test failures before code is even committed.
+    -   This can be bypassed if necessary but act as a first line of defense.
 
 #### GitHub Actions
-- **Go-CI**
-  - Non-negotiable layer. Every pull request and commit to main (like main) goes through CI action to maintain quality and avoid regressions.
-  - Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
 
+-   **Go-CI**
+-   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
+</details>
 
 ### references
-- https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener
 
-- https://bitly.com/blog/how-to-make-a-url-shortener/
+<details>
+<summary>click here</summary>
+-   https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener
 
-- https://getstream.io/blog/url-shortener/ mvp
+-   https://bitly.com/blog/how-to-make-a-url-shortener/
 
-- https://pkg.go.dev/golang.org/x/time/rate
-- https://go.dev/wiki/RateLimiting 
-- https://blog.logrocket.com/rate-limiting-go-application/
-- https://www.makeuseof.com/rate-limiting-go-applications/ 
+-   https://getstream.io/blog/url-shortener/ mvp
 
-### TODO
+-   https://pkg.go.dev/golang.org/x/time/rate
+-   https://go.dev/wiki/RateLimiting
+-   https://blog.logrocket.com/rate-limiting-go-application/
+-   https://www.makeuseof.com/rate-limiting-go-applications/
+</details>
+
+### Todo
+
+<details>
+<summary>click here</summary>
 - [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
 - [x] testing
 - [ ] rate limiter
@@ -85,3 +106,4 @@ A Go based URL shortener
 - [ ] caching layer 
 - [ ] better shortener algo
 - [ ] deployment
+</details>
