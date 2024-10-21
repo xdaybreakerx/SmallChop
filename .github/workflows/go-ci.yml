@@ -13,7 +13,7 @@ permissions:
     pull-requests: read
 
 jobs:
-    build:
+    build_format_lint_test:
         runs-on: ubuntu-latest
         steps:
             - name: Check out the repository
@@ -23,39 +23,22 @@ jobs:
               uses: actions/setup-go@v5
               with:
                   go-version: stable
-                  cache-dependency-path: |
-                      ./go.sum
 
             - name: Install dependencies
               run: |
                   go mod tidy
                   go mod download
 
-    format:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
             - name: Run gofmt
               run: |
                   gofmt -s -w .
-              working-directory: ./
 
-    lint:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
             - name: Run Golangci-lint
               uses: golangci/golangci-lint-action@v6.1.1
               with:
                   version: v1.60
                   args: "--timeout 5m"
-                  working-directory: ./
 
-    tests:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
             - name: Run tests
               run: |
                   go test ./...
-              working-directory: ./
