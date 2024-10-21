@@ -1,38 +1,74 @@
 name: Go CI
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+    build:
+        runs-on: ubuntu-latest
 
-    steps:
-    - name: Check out the repository
-      uses: actions/checkout@v3
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v3
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: 1.23
+            - name: Set up Go
+              uses: actions/setup-go@v4
+              with:
+                  go-version: 1.23
 
-    - name: Install golangci-lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.50.1
+            - name: Cache Go modules
+              uses: actions/cache@v3
+              with:
+                  path: |
+                      ~/go/pkg/mod
+                      ~/.cache/go-build
+                  key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+                  restore-keys: |
+                      ${{ runner.os }}-go-
 
-    - name: Run gofmt
-      run: |
-        gofmt -s -w .
+            - name: Install dependencies
+              run: |
+                  go mod tidy
+                  go mod download
 
-    - name: Run golangci-lint
-      run: |
-        golangci-lint run
+            - name: Install golangci-lint
+              run: |
+                  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.50.1
 
-    - name: Run tests
-      run: |
-        go test ./...
+    format:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v3
+
+            - name: Run gofmt
+              run: |
+                  gofmt -s -w .
+
+    lint:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v3
+
+            - name: Run golangci-lint
+              run: |
+                  golangci-lint run
+
+    tests:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v3
+
+            - name: Run tests
+              run: |
+                  go test ./...
