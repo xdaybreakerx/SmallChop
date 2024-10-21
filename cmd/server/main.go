@@ -23,24 +23,21 @@ func main() {
 	})
 
 	// Test Redis connection
-	_, err := dbClient.Ping(context.Background()).Result()
+	_, err := dbClient.Ping(ctx).Result()
 	if err != nil {
 		log.Fatalf("Could not connect to Redis: %v", err)
 	}
 	fmt.Println("Connected to Redis!")
 
 	// Fetch HTML template
-	// Get the current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
 		log.Fatalf("Could not get working directory: %v", err)
 	}
-	// Construct the absolute path to the HTML template
 	templatePath := filepath.Join(cwd, "internal", "templates", "index.html")
 
-	// GET localhost:8080/
+	// Root handler
 	http.HandleFunc("/", func(writer http.ResponseWriter, req *http.Request) {
-		// Check if the request is a GET request
 		if req.Method != http.MethodGet {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -53,60 +50,48 @@ func main() {
 		fmt.Println("Serving index.html!")
 	})
 
-	// POST localhost:8080/shorten
+	// Shorten URL handler
 	http.HandleFunc("/shorten", func(writer http.ResponseWriter, req *http.Request) {
-		// Check if the request is a POST request
 		if req.Method != http.MethodPost {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Get the URL to shorten from the request
 		url := req.FormValue("url")
-
-		// Close the body when done
 		fmt.Println("Payload: ", url)
 
-		// Shorten the URL
 		shortURL := utils.GetShortCode()
-		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s",
-			shortURL)
-		// Generated short URL
-		// Log to console
-		fmt.Printf("Generated short URL: %s\n", fullShortURL)
-		fmt.Printf("Generated short URL: %s\n", shortURL)
-		// Set the key in Redis
-		repository.SetKey(&ctx, dbClient, shortURL, url, 0)
-		fmt.Fprintf(writer,
-			`<p class="mt-4 text-green-600">Shortened URL: <a 
-                        href="/r/%s" class="underline">%s</a></p>`, shortURL, fullShortURL)
+		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s", shortURL)
+
+		repository.SetKey(ctx, dbClient, shortURL, url, 0)
+
+		fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
 	})
 
-	// localhost:8080/r/OTEzMDEyNw
+	// Redirect handler
 	http.HandleFunc("/r/{code}", func(writer http.ResponseWriter, req *http.Request) {
-		// Check if the request is a GET request
 		if req.Method != http.MethodGet {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
 		}
 
-		key := req.PathValue("code")
+		key := req.URL.Path[len("/r/"):]
 
 		if key == "" {
 			http.Error(writer, "Invalid URL", http.StatusBadRequest)
 			return
 		}
 
-		longURL, err := repository.GetLongURL(&ctx, dbClient, key)
+		longURL, err := repository.GetLongURL(ctx, dbClient, key)
 		if err != nil {
-			http.Error(writer, "Shotened URL not found", http.StatusNotFound)
+			http.Error(writer, "Shortened URL not found", http.StatusNotFound)
 			return
 		}
 
 		http.Redirect(writer, req, longURL, http.StatusPermanentRedirect)
 	})
 
-	// Start the server on port 8080
+	// Start the server
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
