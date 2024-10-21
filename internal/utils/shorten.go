@@ -18,7 +18,7 @@ func GetShortCode() string {
 	key := base64.StdEncoding.EncodeToString(ts_bytes)
 	fmt.Println("Key: ", key)
 
-	// We remove the last two chars since they are usuall always equal signs (==)
+	// We remove the last two chars since they are always equal signs (==)
 	key = key[:len(key)-2]
 	// We return the last chars after 16 chars, these are almost always different
 	return key[16:]
