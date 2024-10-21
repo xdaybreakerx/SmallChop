@@ -1,5 +1,5 @@
 #!/bin/sh
 
-go fmt .
+go fmt ./...
 golangci-lint run
 go test ./...
