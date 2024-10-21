@@ -32,10 +32,6 @@ jobs:
               env:
                   PATH: ${{ runner.env.GOPATH }}/bin:${{ env.PATH }}
 
-            - name: Build project
-              run: |
-                  go build ./...
-
     format:
         needs: build
         runs-on: ubuntu-latest
