@@ -72,9 +72,15 @@ A Go based URL shortener
 
 - https://getstream.io/blog/url-shortener/ mvp
 
+- https://pkg.go.dev/golang.org/x/time/rate
+- https://go.dev/wiki/RateLimiting 
+- https://blog.logrocket.com/rate-limiting-go-application/
+- https://www.makeuseof.com/rate-limiting-go-applications/ 
+
 ### TODO
 - [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
-- [x] testing 
+- [x] testing
+- [] rate limiter
 - [ ] persistent storage 
 - [ ] caching layer 
 - [ ] better shortener algo
