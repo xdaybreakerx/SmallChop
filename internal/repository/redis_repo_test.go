@@ -50,6 +50,7 @@ func TestSetKey(t *testing.T) {
 }
 
 // Test for GetLongURL: ensure that a stored key-value pair can be retrieved successfully.
+// Test for GetLongURL: ensure that a stored key-value pair can be retrieved successfully.
 func TestGetLongURL(t *testing.T) {
 	// Create mock Redis client and server
 	rdb, mockRedis := createMockRedis()
@@ -58,7 +59,6 @@ func TestGetLongURL(t *testing.T) {
 	// Set a test key-value pair in Redis (using miniredis directly)
 	key := "shortURL123"
 	value := "http://example.com"
-	mockRedis.Set(key, value)
 
 	// Check the error return value of mockRedis.Set
 	if err := mockRedis.Set(key, value); err != nil {
