@@ -38,6 +38,7 @@ jobs:
             - name: Run gofmt
               run: |
                   gofmt -s -w .
+              working-directory: ./
 
     lint:
         needs: build
@@ -48,6 +49,7 @@ jobs:
               with:
                   version: v1.60
                   args: "--timeout 5m"
+                  working-directory: ./
 
     tests:
         needs: build
@@ -56,3 +58,4 @@ jobs:
             - name: Run tests
               run: |
                   go test ./...
+              working-directory: ./
