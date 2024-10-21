@@ -80,7 +80,7 @@ A Go based URL shortener
 ### TODO
 - [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
 - [x] testing
-- [] rate limiter
+- [ ] rate limiter
 - [ ] persistent storage 
 - [ ] caching layer 
 - [ ] better shortener algo
