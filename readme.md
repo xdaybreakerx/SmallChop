@@ -53,6 +53,18 @@ A Go based URL shortener
   +------------------------------------------+
 ```
 
+### CI / CD
+#### Pre-Commit (Local)
+- **Husky**
+  - Used to catch basic formatting, linting, and test failures before code is even committed. 
+  - This can be bypassed if necessary but act as a first line of defense.
+
+#### GitHub Actions
+- **Go-CI**
+  - Non-negotiable layer. Every pull request and commit to main (like main) goes through CI action to maintain quality and avoid regressions.
+  - Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
+
+
 ### references
 - https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener
 
@@ -61,9 +73,9 @@ A Go based URL shortener
 - https://getstream.io/blog/url-shortener/ mvp
 
 ### TODO
-- [] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
-- [] testing 
-- [] persistent storage 
-- [] caching layer 
-- [] better shortener algo
-- [] deployment
+- [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
+- [x] testing 
+- [ ] persistent storage 
+- [ ] caching layer 
+- [ ] better shortener algo
+- [ ] deployment

@@ -1,0 +1,44 @@
+name: Go CI
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+permissions:
+    contents: read
+    pull-requests: read
+
+jobs:
+    build_format_lint_test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out the repository
+              uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: stable
+
+            - name: Install dependencies
+              run: |
+                  go mod tidy
+                  go mod download
+
+            - name: Run gofmt
+              run: |
+                  gofmt -s -w .
+
+            - name: Run Golangci-lint
+              uses: golangci/golangci-lint-action@v6.1.1
+              with:
+                  version: v1.60
+                  args: "--timeout 5m"
+
+            - name: Run tests
+              run: |
+                  go test ./...

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+gofmt -s -w .
+golangci-lint run
+go test ./...
