@@ -60,6 +60,9 @@ A Go based URL shortener
   - This can be bypassed if necessary but act as a first line of defense.
 
 #### GitHub Actions
+- **Go-CI**
+  - Non-negotiable layer. Every pull request and commit to main (like main) goes through CI action to maintain quality and avoid regressions.
+  - Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
 
 
 ### references
