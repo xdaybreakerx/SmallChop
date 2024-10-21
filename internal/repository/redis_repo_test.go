@@ -60,6 +60,11 @@ func TestGetLongURL(t *testing.T) {
 	value := "http://example.com"
 	mockRedis.Set(key, value)
 
+	// Check the error return value of mockRedis.Set
+	if err := mockRedis.Set(key, value); err != nil {
+		t.Fatalf("Failed to set key in mock Redis: %v", err)
+	}
+
 	// Act: Try to retrieve the key from Redis
 	retrievedValue, err := GetLongURL(ctx, rdb, key)
 	if err != nil {

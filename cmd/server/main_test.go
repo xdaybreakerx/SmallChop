@@ -129,6 +129,12 @@ func TestRedirectHandler(t *testing.T) {
 	// Set a mock short URL in Redis
 	mockRedis.Set("testShortCode", "http://example.com")
 
+	// Check the error return value of mockRedis.Set
+	if err := mockRedis.Set("testShortCode", "http://example.com"); err != nil {
+		t.Fatalf("Failed to set key in mock Redis: %v", err)
+	}
+
+
 	// Mock GET request to the redirect endpoint
 	req, err := http.NewRequest("GET", "/r/testShortCode", nil)
 	if err != nil {
