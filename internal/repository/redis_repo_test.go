@@ -32,15 +32,12 @@ func TestSetKey(t *testing.T) {
 	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
 
-	// Create an instance of RedisRepo
-	repo := &RedisRepo{client: rdb}
-
 	// Set a test key-value pair in Redis
 	key := "shortURL123"
 	value := "http://example.com"
 
 	// Act: Set the key in Redis
-	SetKey(&ctx, repo.client, key, value, 0)
+	SetKey(ctx, rdb, key, value, 0)
 
 	// Assert: Check if the value was set correctly in the mock Redis
 	storedValue, err := mockRedis.Get(key)
@@ -58,17 +55,13 @@ func TestGetLongURL(t *testing.T) {
 	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
 
-	// Create an instance of RedisRepo
-	repo := &RedisRepo{client: rdb}
-
-	// Set a test key-value pair in Redis 
-	// (using miniredis directly)
+	// Set a test key-value pair in Redis (using miniredis directly)
 	key := "shortURL123"
 	value := "http://example.com"
 	mockRedis.Set(key, value)
 
 	// Act: Try to retrieve the key from Redis
-	retrievedValue, err := GetLongURL(&ctx, repo.client, key)
+	retrievedValue, err := GetLongURL(ctx, rdb, key)
 	if err != nil {
 		t.Fatalf("Failed to retrieve key from Redis: %v", err)
 	}
@@ -85,12 +78,9 @@ func TestGetLongURL_NotFound(t *testing.T) {
 	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
 
-	// Create an instance of RedisRepo
-	repo := &RedisRepo{client: rdb}
-
 	// Try to get a key that doesn't exist
 	nonExistentKey := "nonExistentKey"
-	_, err := GetLongURL(&ctx, repo.client, nonExistentKey)
+	_, err := GetLongURL(ctx, rdb, nonExistentKey)
 
 	// Assert: Check if the appropriate error is returned
 	if err == nil {
