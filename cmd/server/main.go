@@ -50,8 +50,8 @@ func main() {
 		fmt.Println("Serving index.html!")
 	})
 
-	// Shorten URL handler
-	http.HandleFunc("/shorten", func(writer http.ResponseWriter, req *http.Request) {
+	// Shorten URL handler with rate limiting
+	http.Handle("/shorten", utils.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -66,10 +66,10 @@ func main() {
 		repository.SetKey(ctx, dbClient, shortURL, url, 0)
 
 		fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
-	})
+	}))
 
-	// Redirect handler
-	http.HandleFunc("/r/{code}", func(writer http.ResponseWriter, req *http.Request) {
+	// Redirect handler with rate limiting
+	http.Handle("/r/", utils.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -89,7 +89,7 @@ func main() {
 		}
 
 		http.Redirect(writer, req, longURL, http.StatusPermanentRedirect)
-	})
+	}))
 
 	// Start the server
 	if err := http.ListenAndServe(":8080", nil); err != nil {
