@@ -90,7 +90,7 @@ A Go based URL shortener
 -   [x] pre commit hooks
 -   [x] testing
 -   [x] rate limiter
--   [ ] persistent storage
+-   [x] persistent storage
 -   [ ] caching layer
 -   [ ] better shortener algo
 -   [ ] deployment and CD workflow
