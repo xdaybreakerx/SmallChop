@@ -87,12 +87,12 @@ A Go based URL shortener
 <details>
 <summary>click here</summary>
 
--   [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
+-   [x] pre commit hooks
 -   [x] testing
--   [ ] rate limiter
+-   [x] rate limiter
 -   [ ] persistent storage
 -   [ ] caching layer
 -   [ ] better shortener algo
--   [ ] deployment
+-   [ ] deployment and CD workflow
 
 </details>
