@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -18,10 +19,11 @@ type MongoRepo struct {
 
 // URL struct represents a URL document in MongoDB
 type URL struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	CreatedAt time.Time          `bson:"createdAt"`
-	ShortURL  string             `bson:"shortURL"`
-	LongURL   string             `bson:"longURL"`
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	CreatedAt   time.Time          `bson:"createdAt"`
+	ShortURL    string             `bson:"shortURL"`
+	LongURL     string             `bson:"longURL"`
+	AccessCount int                `bson:"accessCount"`
 }
 
 // NewMongoRepo creates a new instance of MongoRepo and establishes the connection
@@ -80,4 +82,12 @@ func (repo *MongoRepo) FindURL(ctx context.Context, shortURL string) (URL, error
 	}
 
 	return urlDoc, nil
+}
+
+// Increment Access Count tracks how often URLs are accessed, for Redis caching of top frequent n accessed URLs
+func (repo *MongoRepo) IncrementAccessCount(ctx context.Context, shortURL string) error {
+	filter := bson.M{"shortURL": shortURL}
+	update := bson.M{"$inc": bson.M{"accessCount": 1}} // Increment access count by 1
+	_, err := repo.collection.UpdateOne(ctx, filter, update)
+	return err
 }
