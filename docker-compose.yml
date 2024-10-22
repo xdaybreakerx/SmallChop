@@ -5,7 +5,30 @@ services:
       - "8080:8080"
     depends_on:
       - redis
+      - mongo
+    environment:
+      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_USER: "${MONGO_INITDB_ROOT_USERNAME}"
+      MONGO_PASS: "${MONGO_INITDB_ROOT_PASSWORD}" 
+    env_file:
+      - .env 
+
   redis:
     image: "redis:alpine"
     ports:
       - "6379:6379"
+
+  mongo:
+    image: "mongo:latest"
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}" 
+      MONGO_INITDB_DATABASE: "url_shortener" 
+    volumes:
+      - mongo-data:/data/db # Persistent storage
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro # RBAC init script
+
+volumes:
+  mongo-data:
