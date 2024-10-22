@@ -7,6 +7,8 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 )
 
+require github.com/davecgh/go-spew v1.1.1 // indirect
+
 require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/compress v1.13.6 // indirect
