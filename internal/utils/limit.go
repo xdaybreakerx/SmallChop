@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -60,7 +61,9 @@ func perClientRateLimiter(next func(writer http.ResponseWriter, request *http.Re
 			}
 
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(&message)
+			if err := json.NewEncoder(w).Encode(&message); err != nil {
+				log.Printf("Error during JSON encoding")
+			}
 			return
 		}
 		mu.Unlock()
