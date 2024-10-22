@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -28,8 +29,12 @@ type URL struct {
 
 // NewMongoRepo creates a new instance of MongoRepo and establishes the connection
 func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
+	// Fetch MongoDB credentials and URI from environment variables
+	mongoURI := "mongodb://" + os.Getenv("MONGO_INITDB_ROOT_USERNAME") + ":" +
+		os.Getenv("MONGO_INITDB_ROOT_PASSWORD") + "@mongo:27017/" + os.Getenv("MONGO_DB_NAME")
+
 	// Set MongoDB connection options
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017/")
+	clientOptions := options.Client().ApplyURI(mongoURI)
 
 	// Connect to MongoDB
 	client, err := mongo.Connect(ctx, clientOptions)
@@ -42,10 +47,10 @@ func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
 		return nil, err
 	}
 
-	log.Println("Connected to MongoDB!")
+	log.Println("Connected to MongoDB with RBAC credentials!")
 
 	// Initialize the collection
-	collection := client.Database("url_shortener").Collection("urls")
+	collection := client.Database(os.Getenv("MONGO_DB_NAME")).Collection("urls")
 
 	return &MongoRepo{
 		client:     client,
