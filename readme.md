@@ -13,6 +13,7 @@ A Go based URL shortener
 
 <details>
 <summary>click here</summary>
+
 ## Proposed Final Architecture
 
 ```
@@ -67,6 +68,7 @@ A Go based URL shortener
 
 <details>
 <summary>click here</summary>
+
 #### Pre-Commit (Local)
 
 -   **Husky**
@@ -77,33 +79,20 @@ A Go based URL shortener
 
 -   **Go-CI**
 -   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
-</details>
 
-### references
-
-<details>
-<summary>click here</summary>
--   https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener
-
--   https://bitly.com/blog/how-to-make-a-url-shortener/
-
--   https://getstream.io/blog/url-shortener/ mvp
-
--   https://pkg.go.dev/golang.org/x/time/rate
--   https://go.dev/wiki/RateLimiting
--   https://blog.logrocket.com/rate-limiting-go-application/
--   https://www.makeuseof.com/rate-limiting-go-applications/
 </details>
 
 ### Todo
 
 <details>
 <summary>click here</summary>
-- [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
-- [x] testing
-- [ ] rate limiter
-- [ ] persistent storage 
-- [ ] caching layer 
-- [ ] better shortener algo
-- [ ] deployment
+
+-   [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
+-   [x] testing
+-   [ ] rate limiter
+-   [ ] persistent storage
+-   [ ] caching layer
+-   [ ] better shortener algo
+-   [ ] deployment
+
 </details>
