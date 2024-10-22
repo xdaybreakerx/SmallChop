@@ -16,7 +16,7 @@ type Message struct {
 	Body   string `json:"body"`
 }
 
-func perClientRateLimiter(next func(writer http.ResponseWriter, request *http.Request)) http.Handler {
+func PerClientRateLimiter(next func(writer http.ResponseWriter, request *http.Request)) http.Handler {
 	type client struct {
 		limiter  *rate.Limiter
 		lastSeen time.Time
