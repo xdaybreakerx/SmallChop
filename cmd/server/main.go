@@ -12,6 +12,7 @@ import (
 
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
+	"gochop-it/internal/middleware"
 )
 
 var ctx = context.Background()
@@ -63,7 +64,7 @@ func main() {
 	})
 
 	// Shorten URL handler with rate limiting
-	http.Handle("/shorten", utils.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
+	http.Handle("/shorten", middleware.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
@@ -102,7 +103,7 @@ func main() {
 	}))
 
 	// Redirect handler with rate limiting and Redis caching with lazy loading
-	http.Handle("/r/", utils.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
+	http.Handle("/r/", middleware.PerClientRateLimiter(func(writer http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			http.Error(writer, "Invalid request method", http.StatusMethodNotAllowed)
 			return
