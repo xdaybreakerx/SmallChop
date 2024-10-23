@@ -18,11 +18,6 @@ A Go based URL shortener
                       |
                       v
          +----------------------------+
-         |   Load Balancer (Optional) |
-         +----------------------------+
-                      |
-                      v
-         +----------------------------+
          |      URL Shortener API     |
          |        (Go Service)        |
          +----------------------------+
