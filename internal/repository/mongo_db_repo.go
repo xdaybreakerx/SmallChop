@@ -30,8 +30,8 @@ type URL struct {
 // NewMongoRepo creates a new instance of MongoRepo and establishes the connection
 func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
 	// Fetch MongoDB credentials and URI from environment variables
-	mongoURI := "mongodb://" + os.Getenv("MONGO_INITDB_ROOT_USERNAME") + ":" +
-		os.Getenv("MONGO_INITDB_ROOT_PASSWORD") + "@mongo:27017/" + os.Getenv("MONGO_DB_NAME")
+	mongoURI := "mongodb://" + os.Getenv("MONGO_APP_USERNAME") + ":" +
+		os.Getenv("MONGO_APP_PASSWORD") + "@mongo:27017/" + os.Getenv("MONGO_DB_NAME")
 
 	// Set MongoDB connection options
 	clientOptions := options.Client().ApplyURI(mongoURI)
