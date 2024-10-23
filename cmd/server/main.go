@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-redis/redis/v8"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
 )
@@ -17,17 +16,19 @@ import (
 var ctx = context.Background()
 
 func main() {
-	// Redis setup
-	dbClient := redis.NewClient(&redis.Options{
-		Addr: "redis:6379", // Redis service hostname in Docker Compose
-	})
-
-	// Test Redis connection
-	_, err := dbClient.Ping(ctx).Result()
+	// MongoDB setup
+	mongoRepo, err := repository.NewMongoRepo(ctx)
 	if err != nil {
-		log.Fatalf("Could not connect to Redis: %v", err)
+		log.Fatalf("Could not connect to MongoDB: %v", err)
 	}
-	fmt.Println("Connected to Redis!")
+	fmt.Println("Connected to MongoDB!")
+
+	// Ensure MongoDB connection is valid
+	err = mongoRepo.Client.Ping(ctx, nil)
+	if err != nil {
+		log.Fatalf("MongoDB ping failed: %v", err)
+	}
+	fmt.Println("MongoDB connection is active!")
 
 	// Fetch HTML template
 	cwd, err := os.Getwd()
@@ -60,11 +61,32 @@ func main() {
 		url := req.FormValue("url")
 		fmt.Println("Payload: ", url)
 
-		shortURL := utils.GetShortCode()
+		// Check if the long URL already exists in the database
+		existingShortURL, err := mongoRepo.FindShortURLByLongURL(ctx, url)
+		if err != nil {
+			http.Error(writer, "Failed to check URL existence", http.StatusInternalServerError)
+			return
+		}
+
+		var shortURL string
+		// If the long URL already exists, use the existing short URL
+		if existingShortURL != "" {
+			fmt.Println("URL already exists in the database, returning existing short URL")
+			shortURL = existingShortURL
+		} else {
+			// Generate a new short URL if not found in the database
+			shortURL = utils.GetShortCode()
+			_, err := mongoRepo.SaveURL(ctx, shortURL, url)
+			if err != nil {
+				http.Error(writer, "Failed to save URL", http.StatusInternalServerError)
+				return
+			}
+			fmt.Println("URL not found, saved new short URL")
+		}
+
 		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s", shortURL)
 
-		repository.SetKey(ctx, dbClient, shortURL, url, 0)
-
+		// Respond with the shortened URL
 		fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
 	}))
 
@@ -82,13 +104,19 @@ func main() {
 			return
 		}
 
-		longURL, err := repository.GetLongURL(ctx, dbClient, key)
+		urlDoc, err := mongoRepo.FindURL(ctx, key)
 		if err != nil {
 			http.Error(writer, "Shortened URL not found", http.StatusNotFound)
 			return
 		}
 
-		http.Redirect(writer, req, longURL, http.StatusPermanentRedirect)
+		// Increment access count
+		err = mongoRepo.IncrementAccessCount(ctx, key)
+		if err != nil {
+			log.Printf("Failed to increment access count: %v", err)
+		}
+
+		http.Redirect(writer, req, urlDoc.LongURL, http.StatusPermanentRedirect)
 	}))
 
 	// Start the server
