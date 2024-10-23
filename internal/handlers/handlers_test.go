@@ -1,6 +1,7 @@
-package main
+package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -61,6 +62,7 @@ func TestRootHandler(t *testing.T) {
 
 // Test shorten handler "/shorten"
 func TestShortenHandler(t *testing.T) {
+	ctx := context.TODO()
 	// Mock Redis server using miniredis
 	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
@@ -127,6 +129,7 @@ func TestShortenHandler(t *testing.T) {
 
 // Test redirect handler "/r/{code}"
 func TestRedirectHandler(t *testing.T) {
+	ctx := context.TODO()
 	// Mock Redis server using miniredis
 	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
