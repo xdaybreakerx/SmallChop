@@ -87,12 +87,18 @@ A Go based URL shortener
 <details>
 <summary>click here</summary>
 
--   [x] pre commit hooks https://bongnv.com/blog/2021-08-29-pre-commit-hooks-golang-projects/
+-   [x] pre commit hooks
 -   [x] testing
--   [ ] rate limiter
--   [ ] persistent storage
+-   [x] rate limiter
+-   [x] persistent storage
 -   [ ] caching layer
 -   [ ] better shortener algo
--   [ ] deployment
+-   [ ] deployment and CD workflow
 
 </details>
+
+### Setup 
+#### MongoDB 
+1. Copy `mongo-user-init-example.js` to `mongo-user-init.js` and replace the placeholder values with your own credentials.
+2. Copy `.env.example` to `.env` and update the environment variables accordingly.
+3. Ensure that both `mongo-init.js` and `.env` are **not** committed to version control.
