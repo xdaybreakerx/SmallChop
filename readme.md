@@ -11,11 +11,6 @@ A Go based URL shortener
 
 ## Architecture
 
-<details>
-<summary>click here</summary>
-
-## Proposed Final Architecture
-
 ```
             +---------------------+
             |     User Requests   |
@@ -43,6 +38,9 @@ A Go based URL shortener
   +------------------------------------------+
 ```
 
+<details>
+<summary>click here</summary>
+
 ## MVP Architecture
 
 ```
@@ -66,9 +64,6 @@ A Go based URL shortener
 
 ### CI / CD
 
-<details>
-<summary>click here</summary>
-
 #### Pre-Commit (Local)
 
 -   **Husky**
@@ -80,8 +75,6 @@ A Go based URL shortener
 -   **Go-CI**
 -   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
 
-</details>
-
 ### Todo
 
 <details>
@@ -91,14 +84,16 @@ A Go based URL shortener
 -   [x] testing
 -   [x] rate limiter
 -   [x] persistent storage
--   [ ] caching layer
+-   [x] caching layer
 -   [ ] better shortener algo
 -   [ ] deployment and CD workflow
 
 </details>
 
-### Setup 
-#### MongoDB 
+### Setup
+
+#### MongoDB
+
 1. Copy `mongo-user-init-example.js` to `mongo-user-init.js` and replace the placeholder values with your own credentials.
 2. Copy `.env.example` to `.env` and update the environment variables accordingly.
 3. Ensure that both `mongo-init.js` and `.env` are **not** committed to version control.
