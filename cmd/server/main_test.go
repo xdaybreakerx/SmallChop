@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,22 @@ import (
 	"github.com/go-redis/redis/v8"
 	"gochop-it/internal/repository"
 )
+
+// Create a mock Redis client using miniredis
+func createMockRedis() (*redis.Client, *miniredis.Miniredis) {
+	// Start a mock Redis server
+	mockRedis, err := miniredis.Run()
+	if err != nil {
+		panic("Unable to start mock redis server")
+	}
+
+	// Create a Redis client connected to the mock Redis server
+	rdb := redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
+
+	return rdb, mockRedis
+}
 
 // Test root handler "/"
 func TestRootHandler(t *testing.T) {
@@ -47,16 +62,11 @@ func TestRootHandler(t *testing.T) {
 // Test shorten handler "/shorten"
 func TestShortenHandler(t *testing.T) {
 	// Mock Redis server using miniredis
-	mockRedis, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("Failed to start miniredis: %v", err)
-	}
+	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
 
-	// Create Redis client connected to the mock Redis server
-	rdb := redis.NewClient(&redis.Options{
-		Addr: mockRedis.Addr(),
-	})
+	// Create Redis repository
+	redisRepo := &repository.RedisRepo{Client: rdb}
 
 	// Mock POST request with a form value
 	req, err := http.NewRequest("POST", "/shorten", strings.NewReader("url=http://example.com"))
@@ -82,7 +92,10 @@ func TestShortenHandler(t *testing.T) {
 		fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s", shortURL)
 
 		// Set the key in mock Redis
-		repository.SetKey(context.Background(), rdb, shortURL, url, 0)
+		err := redisRepo.SetKey(ctx, shortURL, url, 0)
+		if err != nil {
+			t.Errorf("Failed to set key %s: %v", url, err)
+		}
 
 		// Return the shortened URL
 		fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
@@ -115,16 +128,11 @@ func TestShortenHandler(t *testing.T) {
 // Test redirect handler "/r/{code}"
 func TestRedirectHandler(t *testing.T) {
 	// Mock Redis server using miniredis
-	mockRedis, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("Failed to start miniredis: %v", err)
-	}
+	rdb, mockRedis := createMockRedis()
 	defer mockRedis.Close()
 
-	// Create Redis client connected to the mock Redis server
-	rdb := redis.NewClient(&redis.Options{
-		Addr: mockRedis.Addr(),
-	})
+	// Create Redis repository
+	redisRepo := &repository.RedisRepo{Client: rdb}
 
 	// Set a mock short URL in Redis and handle the error return value
 	if err := mockRedis.Set("testShortCode", "http://example.com"); err != nil {
@@ -145,7 +153,7 @@ func TestRedirectHandler(t *testing.T) {
 		// Extract the short code from the path
 		code := "testShortCode" // Mock extracting the code from URL path
 
-		longURL, err := repository.GetLongURL(context.Background(), rdb, code)
+		longURL, err := redisRepo.GetLongURL(ctx, nil, code, 0)
 		if err != nil {
 			http.Error(writer, "Shortened URL not found", http.StatusNotFound)
 			return
