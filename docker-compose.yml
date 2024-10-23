@@ -28,7 +28,7 @@ services:
       MONGO_INITDB_DATABASE: "url_shortener"
     volumes:
       - mongo-data:/data/db # Persistent storage
-      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro # RBAC init script
+      - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script
 
 volumes:
   mongo-data:
