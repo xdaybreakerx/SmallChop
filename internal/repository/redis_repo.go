@@ -15,7 +15,7 @@ type RedisRepo struct {
 // Initialize a new instance of the RedisRepo struct
 func NewRedisRepo() *RedisRepo {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379", // Docker
+		Addr: "redis:6379", // Docker
 	})
 	return &RedisRepo{Client: rdb}
 }
