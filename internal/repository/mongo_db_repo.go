@@ -14,8 +14,8 @@ import (
 
 // MongoRepo struct holds the MongoDB client
 type MongoRepo struct {
-	client     *mongo.Client
-	collection *mongo.Collection
+	Client     *mongo.Client
+	Collection *mongo.Collection
 }
 
 // URL struct represents a URL document in MongoDB
@@ -53,8 +53,8 @@ func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
 	collection := client.Database(os.Getenv("MONGO_DB_NAME")).Collection("urls")
 
 	return &MongoRepo{
-		client:     client,
-		collection: collection,
+		Client:     client,
+		Collection: collection,
 	}, nil
 }
 
@@ -68,7 +68,7 @@ func (repo *MongoRepo) SaveURL(ctx context.Context, shortURL, longURL string) (p
 	}
 
 	// Insert the document into the collection
-	result, err := repo.collection.InsertOne(ctx, urlDoc)
+	result, err := repo.Collection.InsertOne(ctx, urlDoc)
 	if err != nil {
 		return primitive.NilObjectID, err
 	}
@@ -81,7 +81,7 @@ func (repo *MongoRepo) SaveURL(ctx context.Context, shortURL, longURL string) (p
 // FindURL retrieves a URL document based on the short URL
 func (repo *MongoRepo) FindURL(ctx context.Context, shortURL string) (URL, error) {
 	var urlDoc URL
-	err := repo.collection.FindOne(ctx, primitive.M{"shortURL": shortURL}).Decode(&urlDoc)
+	err := repo.Collection.FindOne(ctx, primitive.M{"shortURL": shortURL}).Decode(&urlDoc)
 	if err != nil {
 		return URL{}, err
 	}
@@ -93,6 +93,6 @@ func (repo *MongoRepo) FindURL(ctx context.Context, shortURL string) (URL, error
 func (repo *MongoRepo) IncrementAccessCount(ctx context.Context, shortURL string) error {
 	filter := bson.M{"shortURL": shortURL}
 	update := bson.M{"$inc": bson.M{"accessCount": 1}} // Increment access count by 1
-	_, err := repo.collection.UpdateOne(ctx, filter, update)
+	_, err := repo.Collection.UpdateOne(ctx, filter, update)
 	return err
 }

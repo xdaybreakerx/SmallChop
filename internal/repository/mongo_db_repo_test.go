@@ -15,8 +15,8 @@ func SetupTestMongoRepo(t *testing.T) (*MongoRepo, context.Context) {
 	ctx := context.TODO()
 
 	repo := &MongoRepo{
-		client:     mt.Client,
-		collection: mt.Coll,
+		Client:     mt.Client,
+		Collection: mt.Coll,
 	}
 
 	return repo, ctx
@@ -31,8 +31,8 @@ func TestSaveURL(t *testing.T) {
 		mt.AddMockResponses(mtest.CreateSuccessResponse())
 
 		repo := &MongoRepo{
-			client:     mt.Client,
-			collection: mt.Coll,
+			Client:     mt.Client,
+			Collection: mt.Coll,
 		}
 
 		// Call SaveURL
@@ -62,8 +62,8 @@ func TestFindURL(t *testing.T) {
 		}))
 
 		repo := &MongoRepo{
-			client:     mt.Client,
-			collection: mt.Coll,
+			Client:     mt.Client,
+			Collection: mt.Coll,
 		}
 
 		// Call FindURL
@@ -88,8 +88,8 @@ func TestIncrementAccessCount(t *testing.T) {
 		mt.AddMockResponses(mtest.CreateSuccessResponse())
 
 		repo := &MongoRepo{
-			client:     mt.Client,
-			collection: mt.Coll,
+			Client:     mt.Client,
+			Collection: mt.Coll,
 		}
 
 		// Call IncrementAccessCount
