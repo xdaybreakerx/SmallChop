@@ -96,3 +96,9 @@ A Go based URL shortener
 -   [ ] deployment and CD workflow
 
 </details>
+
+### Setup 
+#### MongoDB 
+1. Copy `mongo-user-init-example.js` to `mongo-user-init.js` and replace the placeholder values with your own credentials.
+2. Copy `.env.example` to `.env` and update the environment variables accordingly.
+3. Ensure that both `mongo-init.js` and `.env` are **not** committed to version control.
