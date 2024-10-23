@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 )
 
@@ -28,6 +27,9 @@ func TestSaveURL(t *testing.T) {
 
 	mt.Run("test save URL", func(mt *mtest.T) {
 		// Set up mock MongoDB responses
+		// First response for the FindOne operation should return no documents
+		mt.AddMockResponses(mtest.CreateCursorResponse(0, "url_shortener.urls", mtest.FirstBatch))
+		// Second response for the InsertOne operation should be successful
 		mt.AddMockResponses(mtest.CreateSuccessResponse())
 
 		repo := &MongoRepo{
@@ -38,14 +40,14 @@ func TestSaveURL(t *testing.T) {
 		// Call SaveURL
 		shortURL := "short123"
 		longURL := "https://example.com"
-		id, err := repo.SaveURL(context.TODO(), shortURL, longURL)
+		returnedShortURL, err := repo.SaveURL(context.TODO(), shortURL, longURL)
 		if err != nil {
 			t.Fatalf("Failed to save URL: %v", err)
 		}
 
-		// Assert the returned ID is not empty
-		if id == primitive.NilObjectID {
-			t.Errorf("Expected a valid ObjectID, got NilObjectID")
+		// Assert the returned short URL is not empty
+		if returnedShortURL == "" {
+			t.Errorf("Expected a valid short URL, got an empty string")
 		}
 	})
 }
@@ -75,6 +77,35 @@ func TestFindURL(t *testing.T) {
 		// Assert the long URL is correct
 		if urlDoc.LongURL != "https://example.com" {
 			t.Errorf("Expected long URL %s, got %s", "https://example.com", urlDoc.LongURL)
+		}
+	})
+}
+
+// TestFindByLongURL tests the FindByLongURL function for retrieving a URL by its long URL.
+func TestFindByLongURL(t *testing.T) {
+	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+
+	mt.Run("test find by long URL", func(mt *mtest.T) {
+		// Set up mock MongoDB responses
+		mt.AddMockResponses(mtest.CreateCursorResponse(1, "url_shortener.urls", mtest.FirstBatch, bson.D{
+			{Key: "shortURL", Value: "short123"},
+			{Key: "longURL", Value: "https://example.com"},
+		}))
+
+		repo := &MongoRepo{
+			Client:     mt.Client,
+			Collection: mt.Coll,
+		}
+
+		// Call FindByLongURL
+		shortURL, err := repo.FindShortURLByLongURL(context.TODO(), "https://example.com")
+		if err != nil {
+			t.Fatalf("Failed to find URL by long URL: %v", err)
+		}
+
+		// Assert the short URL is correct
+		if shortURL != "short123" {
+			t.Errorf("Expected short URL %s, got %s", "short123", shortURL)
 		}
 	})
 }
