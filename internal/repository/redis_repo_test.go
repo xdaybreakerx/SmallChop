@@ -41,7 +41,6 @@ func TestSetKey(t *testing.T) {
 	// Act: Set the key in Redis using RedisRepo
 	err := redisRepo.SetKey(ctx, key, value, 0)
 	if err != nil {
-		// Handle the error (e.g., log it, return it, or take corrective action)
 		t.Errorf("Failed to set key %s: %v", key, err)
 	}
 
