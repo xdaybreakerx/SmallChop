@@ -35,25 +35,15 @@ jobs:
         needs: build
 
         steps:
-            - name: Checkout code
-              uses: actions/checkout@v2
-
-            - name: Upload docker-compose.yml to server
-              uses: appleboy/scp-action@master
-              with:
-                  host: ${{ secrets.DO_HOST }}
-                  username: ${{ secrets.DO_SSH_USER }}
-                  key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-                  source: "docker-compose.yml"
-                  target: "/root/gochop-it/"
-
-            - name: Deploy to DigitalOcean
+            - name: SSH into DigitalOcean and pull the repo
               uses: appleboy/ssh-action@master
               with:
                   host: ${{ secrets.DO_HOST }}
                   username: ${{ secrets.DO_SSH_USER }}
                   key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
                   script: |
+                      cd /root/gochop-it || git clone https://github.com/${{ secrets.GITHUB_REPOSITORY }} /root/gochop-it && cd /root/gochop-it
+                      git pull origin main
                       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-                      /usr/bin/docker-compose -f /root/gochop-it/docker-compose.yml down
-                      /usr/bin/docker-compose -f /root/gochop-it/docker-compose.yml up -d
+                      /usr/bin/docker-compose down
+                      /usr/bin/docker-compose up -d
