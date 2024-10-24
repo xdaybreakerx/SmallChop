@@ -4,10 +4,10 @@ on:
     push:
         branches:
             - main
-#  this will be used only during set up, once github action confirmed working will remove
+    # This will be used only during setup, once GitHub action is confirmed working, will remove
     pull_request:
         branches:
-            - main 
+            - main
 
 jobs:
     build:
@@ -44,5 +44,5 @@ jobs:
                   key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
                   script: |
                       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-                      docker-compose -f /path/to/docker-compose.yml down
-                      docker-compose -f /path/to/docker-compose.yml up -d
+                      /usr/bin/docker-compose -f /root/gochop-it/docker-compose.yml down
+                      /usr/bin/docker-compose -f /root/gochop-it/docker-compose.yml up -d
