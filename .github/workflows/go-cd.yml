@@ -36,12 +36,17 @@ jobs:
         needs: build
 
         steps:
-            - name: SSH into DigitalOcean
+            - name: Checkout code
+              uses: actions/checkout@v2
+
+            - name: Deploy to DigitalOcean
               uses: appleboy/ssh-action@master
               with:
                   host: ${{ secrets.DO_HOST }}
                   username: ${{ secrets.DO_SSH_USER }}
                   key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+                  source: "docker-compose.yml"
+                  target: "/root/gochop-it/docker-compose.yml"
                   script: |
                       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
                       /usr/bin/docker-compose -f /root/gochop-it/docker-compose.yml down
