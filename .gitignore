@@ -23,6 +23,7 @@ go.work.sum
 
 # env file
 .env
+.env.github-actions
 
 # mongodb set up files with sensitive data
 mongo-user-init.js
