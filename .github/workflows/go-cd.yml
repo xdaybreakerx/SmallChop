@@ -56,7 +56,7 @@ jobs:
                   # pull repo
                   # restart docker with new container
                   script: |
-                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop-it /root/gochop-it
+                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop.it /root/gochop-it
                       cd /root/gochop-it
                       git pull origin main
 
