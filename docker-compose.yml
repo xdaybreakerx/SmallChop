@@ -7,16 +7,22 @@ services:
       - redis
       - mongo
     environment:
-      MONGO_URI: "mongodb://mongo:27017"
-      MONGO_USER: "${MONGO_INITDB_ROOT_USERNAME}"
-      MONGO_PASS: "${MONGO_INITDB_ROOT_PASSWORD}"
-      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      # Mongo secrets
+      # Root
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      # User 
+      - MONGO_APP_USERNAME=${MONGO_APP_USERNAME}
+      - MONGO_APP_PASSWORD=${MONGO_APP_PASSWORD}
+
+      # Redis Secrets
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     env_file:
       - .env
 
-  redis: 
+  redis:
     image: "redis:alpine"
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD}" ]
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
 
@@ -26,9 +32,9 @@ services:
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
       MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}"
       MONGO_INITDB_DATABASE: "url_shortener"
-      
-      MONGO_APP_USER: "${MONGO_APP_USERNAME}"
-      MONGO_APP_PASSWORD: "${MONGO_APP_PASSWORD}" 
+
+      MONGO_APP_USERNAME: "${MONGO_APP_USERNAME}"
+      MONGO_APP_PASSWORD: "${MONGO_APP_PASSWORD}"
 
     volumes:
       - mongo-data:/data/db # Persistent storage
