@@ -69,8 +69,11 @@ jobs:
                       export MONGO_APP_PASSWORD=$MONGO_APP_PASSWORD
                       export REDIS_PASSWORD=$REDIS_PASSWORD
 
+                      # confirm variables for troubleshooting
+                      env | grep -E 'MONGO|REDIS'
+
                       # Create an empty .env file
                       touch .env
 
-                      docker compose down
-                      docker compose up -d
+                      # docker compose down
+                      # docker compose up -d
