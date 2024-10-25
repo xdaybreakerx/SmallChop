@@ -6,6 +6,7 @@ services:
     depends_on:
       - redis
       - mongo
+    # cd deployment
     environment:
       # Mongo secrets
       # Root
@@ -17,6 +18,8 @@ services:
 
       # Redis Secrets
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+
+    # local development
     env_file:
       - .env
 

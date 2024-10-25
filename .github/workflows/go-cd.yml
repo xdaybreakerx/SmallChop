@@ -56,9 +56,10 @@ jobs:
                   # pull repo
                   # restart docker with new container
                   script: |
-                      cd /root/gochop-it || git clone https://github.com/${{ secrets.GITHUB_REPOSITORY }} /root/gochop-it
+                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop-it /root/gochop-it
                       cd /root/gochop-it
                       git pull origin main
+
                       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-                      docker-compose down
-                      docker-compose up -d
+                      docker compose down
+                      docker compose up -d
