@@ -31,47 +31,40 @@ jobs:
               run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
 
     deploy:
-      runs-on: ubuntu-latest
-      needs: build
+        runs-on: ubuntu-latest
+        needs: build
 
-      steps:
-        - name: Deploy to DigitalOcean Droplet
-          uses: appleboy/ssh-action@master
-          with:
-            host: ${{ secrets.DO_HOST }}
-            username: ${{ secrets.DO_SSH_USER }}
-            key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+        steps:
+            - name: Deploy to DigitalOcean Droplet
+              uses: appleboy/ssh-action@master
+              env:
+                  MONGO_INITDB_ROOT_USERNAME: ${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
+                  MONGO_INITDB_ROOT_PASSWORD: ${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
+                  MONGO_APP_USERNAME: ${{ secrets.MONGO_APP_USERNAME }}
+                  MONGO_APP_PASSWORD: ${{ secrets.MONGO_APP_PASSWORD }}
+                  REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              with:
+                  host: ${{ secrets.DO_HOST }}
+                  username: ${{ secrets.DO_SSH_USER }}
+                  key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+                  envs: MONGO_INITDB_ROOT_USERNAME,MONGO_INITDB_ROOT_PASSWORD,MONGO_APP_USERNAME,MONGO_APP_PASSWORD,REDIS_PASSWORD,DOCKERHUB_USERNAME
+                  script: |
+                      # Navigate to the project directory or clone it if it doesn't exist
+                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop.it /root/gochop-it
+                      cd /root/gochop-it
+                      git pull origin main
 
-            # Pass secrets as environment variables
-            env: |
-              MONGO_INITDB_ROOT_USERNAME=${{ secrets.MONGO_INITDB_ROOT_USERNAME }}
-              MONGO_INITDB_ROOT_PASSWORD=${{ secrets.MONGO_INITDB_ROOT_PASSWORD }}
-              MONGO_APP_USERNAME=${{ secrets.MONGO_APP_USERNAME }}
-              MONGO_APP_PASSWORD=${{ secrets.MONGO_APP_PASSWORD }}
-              REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-              DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+                      # Pull the latest Docker image
+                      docker pull $DOCKERHUB_USERNAME/gochop-it:latest
 
+                      # Environment variables are now available in the remote shell
+                      # Confirm variables for troubleshooting
+                      env | grep -E 'MONGO|REDIS'
 
-            # Remote script to execute
-            script: |
-              cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop.it /root/gochop-it
-              cd /root/gochop-it
-              git pull origin main
+                      # Create an empty .env file to prevent Docker Compose from complaining
+                      touch .env
 
-              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-
-              export MONGO_INITDB_ROOT_USERNAME="${MONGO_INITDB_ROOT_USERNAME}"
-              export MONGO_INITDB_ROOT_PASSWORD="${MONGO_INITDB_ROOT_PASSWORD}"
-              export MONGO_APP_USERNAME="${MONGO_APP_USERNAME}"
-              export MONGO_APP_PASSWORD="${MONGO_APP_PASSWORD}"
-              export REDIS_PASSWORD="${REDIS_PASSWORD}"
-
-              # Confirm variables for troubleshooting
-              env | grep -E 'MONGO|REDIS'
-
-              # Create an empty .env file
-              touch .env
-
-              docker compose down
-              docker compose up -d
-
+                      # Restart the Docker services
+                      docker compose down
+                      docker compose up -d
