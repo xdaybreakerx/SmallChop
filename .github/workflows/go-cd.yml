@@ -61,5 +61,12 @@ jobs:
                       git pull origin main
 
                       docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
+
+                      export MONGO_INITDB_ROOT_USERNAME=$MONGO_INITDB_ROOT_USERNAME
+                      export MONGO_INITDB_ROOT_PASSWORD=$MONGO_INITDB_ROOT_PASSWORD
+                      export MONGO_APP_USERNAME=$MONGO_APP_USERNAME
+                      export MONGO_APP_PASSWORD=$MONGO_APP_PASSWORD
+                      export REDIS_PASSWORD=$REDIS_PASSWORD
+
                       docker compose down
                       docker compose up -d
