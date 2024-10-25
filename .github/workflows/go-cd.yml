@@ -29,21 +29,3 @@ jobs:
 
             - name: Push Docker image
               run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-
-    deploy:
-        runs-on: ubuntu-latest
-        needs: build
-
-        steps:
-            - name: SSH into DigitalOcean and pull the repo
-              uses: appleboy/ssh-action@master
-              with:
-                  host: ${{ secrets.DO_HOST }}
-                  username: ${{ secrets.DO_SSH_USER }}
-                  key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-                  script: |
-                      cd /root/gochop-it || git clone https://github.com/${{ secrets.GITHUB_REPOSITORY }} /root/gochop-it && cd /root/gochop-it
-                      git pull origin main
-                      docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
-                      /usr/bin/docker-compose down
-                      /usr/bin/docker-compose up -d
