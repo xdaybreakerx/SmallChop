@@ -32,12 +32,11 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
 
-      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME}
-      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
-
     volumes:
       - mongo-data:/data/db # Persistent storage
       - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script
+      - ./setup.sh:/docker-entrypoint-initdb.d/mongo-setup.sh
+    entrypoint: [ "/docker-entrypoint-initdb.d/mongo-setup.sh" ]
 
 volumes:
   mongo-data:
