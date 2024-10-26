@@ -6,26 +6,35 @@ services:
     depends_on:
       - redis
       - mongo
+    # cd deployment
     environment:
-      MONGO_URI: "mongodb://mongo:27017"
-      MONGO_USER: "${MONGO_INITDB_ROOT_USERNAME}"
-      MONGO_PASS: "${MONGO_INITDB_ROOT_PASSWORD}"
-    env_file:
-      - .env
+      # Mongo secrets
+      # Root
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      # User 
+      - MONGO_APP_USERNAME=${MONGO_APP_USERNAME}
+      - MONGO_APP_PASSWORD=${MONGO_APP_PASSWORD}
+
+      # Redis Secrets
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
 
   redis:
     image: "redis:alpine"
-    ports:
-      - "6379:6379"
+    command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD}" ]
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
 
   mongo:
     image: "mongo:latest"
-    ports:
-      - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGO_INITDB_ROOT_USERNAME}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_INITDB_ROOT_PASSWORD}"
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
       MONGO_INITDB_DATABASE: "url_shortener"
+
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+
     volumes:
       - mongo-data:/data/db # Persistent storage
       - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script

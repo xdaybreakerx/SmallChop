@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -14,8 +15,11 @@ type RedisRepo struct {
 
 // Initialize a new instance of the RedisRepo struct
 func NewRedisRepo() *RedisRepo {
+	password := os.Getenv("REDIS_PASSWORD")
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "redis:6379", // Docker
+		Addr:     "redis:6379", // Docker
+		Password: password,
 	})
 	return &RedisRepo{Client: rdb}
 }

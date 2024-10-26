@@ -1,0 +1,61 @@
+name: CD Pipeline
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: 1.19
+
+            - name: Build Docker image
+              run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it .
+
+            - name: Log in to DockerHub
+              run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+            - name: Push Docker image
+              run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
+
+    deploy:
+        runs-on: ubuntu-latest
+        needs: build
+
+        steps:
+            - name: Deploy to DigitalOcean Droplet
+              uses: appleboy/ssh-action@master
+              env:
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              with:
+                  host: ${{ secrets.DO_HOST }}
+                  username: ${{ secrets.DO_SSH_USER }}
+                  key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+                  script: |
+                      # Navigate to the project directory or clone it if it doesn't exist
+                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop.it /root/gochop-it
+                      cd /root/gochop-it
+                      git pull origin main
+
+                      # Pull the latest Docker image
+                      docker pull $DOCKERHUB_USERNAME/gochop-it:latest
+
+                      # Create the .env file
+                      touch .env
+                      echo "${{secrets.PRODUCTION_ENV}}" >> .env
+
+                      # Restart the Docker services
+                      docker compose down
+                      docker compose up -d
