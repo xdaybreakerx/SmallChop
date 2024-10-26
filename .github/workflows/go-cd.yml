@@ -45,7 +45,7 @@ jobs:
                   key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
                   script: |
                       # Navigate to the project directory or clone it if it doesn't exist
-                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/gochop.it /root/gochop-it
+                      cd /root/gochop-it || git clone https://github.com/xdaybreakerx/SmallChop /root/gochop-it
                       cd /root/gochop-it
                       git pull origin main
 
