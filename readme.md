@@ -80,8 +80,9 @@ A Go based URL shortener
 -   [x] rate limiter
 -   [x] persistent storage
 -   [x] caching layer
+-   [x] cd with github actions
 -   [ ] better shortener algo
--   [ ] deployment and CD workflow
+-   [ ] deployment
 
 </details>
 
