@@ -35,8 +35,7 @@ services:
     volumes:
       - mongo-data:/data/db # Persistent storage
       - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script
-      - ./mongo-setup.sh:/docker-entrypoint-initdb.d/mongo-setup.sh
-    entrypoint: [ "/docker-entrypoint-initdb.d/mongo-setup.sh" ]
+      - ./mongo-setup.sh:/docker-entrypoint-initdb.d/mongo-setup.sh # Pass .env variables to RBAC init script
 
 volumes:
   mongo-data:
