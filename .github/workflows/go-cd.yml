@@ -56,9 +56,6 @@ jobs:
                       touch .env
                       echo "${{secrets.PRODUCTION_ENV}}" >> .env
 
-                      # Set Mongo set up script as executable
-                      chmod +x mongo-setup.sh
-
                       # Restart the Docker services
                       docker compose down
                       docker compose up -d
