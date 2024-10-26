@@ -1,4 +1,17 @@
 services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80" # HTTP
+      - "443:443" # HTTPS
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    env_file:
+      - .env
+
   app:
     build: .
     ports:
@@ -25,3 +38,5 @@ services:
 
 volumes:
   mongo-data:
+  caddy_data:
+  caddy_config:
