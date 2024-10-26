@@ -1,4 +1,4 @@
-# GoChop.it
+# SmallChop
 
 A Go based URL shortener
 
