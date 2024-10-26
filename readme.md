@@ -7,6 +7,7 @@ A Go based URL shortener
 -   Go
 -   Redis (caching)
 -   MongoDB (persistent db)
+-   Caddy (Reverse Proxy + TLS)
 -   HTMX
 
 ## Architecture
@@ -81,8 +82,8 @@ A Go based URL shortener
 -   [x] persistent storage
 -   [x] caching layer
 -   [x] cd with github actions
+-   [x] deployment
 -   [ ] better shortener algo
--   [ ] deployment
 
 </details>
 
