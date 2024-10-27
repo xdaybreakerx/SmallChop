@@ -89,8 +89,13 @@ A Go based URL shortener
 
 ### Setup
 
-#### MongoDB
+#### MongoDB, Redis, and Caddy
+1. Copy `.env.example` to `.env` and update the environment variables accordingly.
+2. Ensure that `.env` is **not** committed to version control.
 
-1. Copy `mongo-user-init-example.js` to `mongo-user-init.js` and replace the placeholder values with your own credentials.
-2. Copy `.env.example` to `.env` and update the environment variables accordingly.
-3. Ensure that `.env` is **not** committed to version control.
+#### CI/CD Workflow 
+1. Add relevant secrets to GitHub repository.
+    - You'll need to add the following:
+      - Dockerhub token, and username.
+      - Deployment secrets (This example uses Digital Ocean)
+      - A copy of your production .env file. 
