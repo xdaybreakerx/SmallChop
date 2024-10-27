@@ -240,14 +240,16 @@ docker-compose down -v
 <details>
 <summary>click here for the todo list</summary>
 
+-   [x] HTMX + Go + Redis MVP
 -   [x] pre commit hooks
 -   [x] testing
+-   [x] ci with github actions
 -   [x] rate limiter
 -   [x] persistent storage
--   [x] caching layer
+-   [x] change Redis to caching layer
 -   [x] cd with github actions
 -   [x] deployment
--   [ ] better shortener algo
+-   [x] better shortener algo
 
 </details>
 
