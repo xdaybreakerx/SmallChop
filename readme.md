@@ -1,6 +1,6 @@
 # SmallChop
 
-SmallChop is a URL shortener built with Go, crafted for scalability and high performance.
+SmallChop is a URL shortener built with Go, crafted for scalability and high performance. Designed to handle high traffic seamlessly, SmallChop offers fast and reliable URL shortening with a simple, containerized setup that's easy to deploy.
 
 Designed as a lightweight, containerized application, SmallChop leverages Docker and a microservice-oriented architecture to deliver quick, reliable URL shortening and redirection.
 It features a caching layer with Redis for ultra-fast access to frequently requested URLs, persistent storage with MongoDB, and a reverse proxy with Caddy for secure, seamless HTTPS access.
@@ -9,14 +9,37 @@ With a robust CI/CD pipeline for automated deployment, SmallChop is a production
 
 ## Tech Stack:
 
--   Go
--   Redis (caching)
--   MongoDB (persistent db)
--   Caddy (Reverse Proxy + TLS)
--   HTMX
+### Core Technologies
+
+-   Go:
+    -   Powers the URL shortening service, providing high performance and efficient concurrency for handling requests.
+-   HTMX:
+    -   Manages the entire front-end interactivity through server-driven templates. It allows dynamic updates by injecting values directly from server responses, simplifying the frontend and enabling a highly responsive UI.
+-   Redis:
+    -   Serves as a caching layer, ensuring frequently accessed URLs are retrieved quickly. This helps reduce load on the database and improves response times.
+-   MongoDB:
+    -   Provides persistent storage for original URLs and their shortened counterparts. MongoDB’s document-based structure allows flexible storage of URL data.
+-   Caddy:
+    -   Acts as the reverse proxy and TLS provider, enabling secure HTTPS access and efficient routing of requests to the backend service.
+
+### Development & Deployment Tools
+
+-   Docker:
+    -   Containerizes each service (Go app, Redis, MongoDB, and Caddy) to ensure consistency across development, testing, and production environments. Docker Compose is used to manage multi-container setups.
+-   Husky:
+    -   Implements pre-commit hooks for formatting, linting, and running tests locally, helping enforce code quality standards before changes are committed.
+-   gofmt:
+    -   Automatically formats Go code, maintaining a consistent coding style across the project.
+-   golangci-lint:
+    -   Runs static analysis on Go code to catch potential errors, improve code quality, and enforce best practices.
+-   go test:
+    -   Used for running unit tests, ensuring that the application functions as expected and helping prevent regressions.
+-   GitHub Actions:
+    -   Powers CI/CD, building and pushing Docker images to Docker Hub and automating deployment to the production server.
 
 ## High Level Diagram
 
+The architecture diagram below illustrates SmallChop’s core components, showing how user requests are managed through a reverse proxy, caching layer, and database for high efficiency.
 ![diagram](./docs/assets/high-level.png)
 
 <details>
@@ -29,11 +52,11 @@ However, for a project of this scale and purpose, using Kubernetes and a load ba
 </details>
 
 ## Architecture and App Routes
-
+SmallChop exposes routes for creating, retrieving, and redirecting shortened URLs, with caching mechanisms for high-frequency requests.
 ![diagram](./docs/assets/routes.png)
 
 <details>
-<summary>click here</summary>
+<summary>click here for a simple text diagram of the app architecture.</summary>
 
 ## Architecture
 
@@ -86,14 +109,13 @@ However, for a project of this scale and purpose, using Kubernetes and a load ba
 
 #### Husky
 
--   Used to catch basic formatting, linting, and test failures before code is even committed.
--   This can be bypassed if necessary but act as a first line of defense.
+Husky pre-commit hooks ensure that basic formatting, linting, and tests are enforced on all changes before they're committed, while GitHub Actions provides continuous integration and deployment to maintain code quality across environments.
 
 ### GitHub Actions
 
 #### **CI Pipeline**
 
--   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
+Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
 
 #### **CD Pipeline**
 
@@ -150,7 +172,7 @@ docker-compose up --build
 
 5. Services overview
  <details>
- <summary>click here</summary>
+ <summary>click here for summaries of each microservice.</summary>
 
 app Service
 
@@ -215,7 +237,7 @@ docker-compose down -v
 ### Todo
 
 <details>
-<summary>click here</summary>
+<summary>click here for the todo list</summary>
 
 -   [x] pre commit hooks
 -   [x] testing
