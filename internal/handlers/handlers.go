@@ -78,7 +78,7 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("URL not found, saved new short URL")
 	}
 
-	fullShortURL := fmt.Sprintf("http://localhost:8080/r/%s", shortURL)
+	fullShortURL := fmt.Sprintf("http://smallchop.net/r/%s", shortURL)
 	fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
 }
 
