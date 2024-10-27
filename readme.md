@@ -52,6 +52,7 @@ However, for a project of this scale and purpose, using Kubernetes and a load ba
 </details>
 
 ## Architecture and App Routes
+
 SmallChop exposes routes for creating, retrieving, and redirecting shortened URLs, with caching mechanisms for high-frequency requests.
 ![diagram](./docs/assets/routes.png)
 
@@ -249,3 +250,9 @@ docker-compose down -v
 -   [ ] better shortener algo
 
 </details>
+
+### References and further reading.
+
+-   This project used the [tutorial from Annis Souames of Stream.io](https://getstream.io/blog/url-shortener/) for the basic HTMX + Go + Redis implementation. 
+-   This project referenced this [Stack Overflow discussion](https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener) about Bijective Functions for implementing the more complex shortening algorithm.
+-   If you're curious about Caddy vs Nginx, this [article by Tyler Langlois](<(https://blog.tjll.net/reverse-proxy-hot-dog-eating-contest-caddy-vs-nginx/)>) discusses performance considerations.
