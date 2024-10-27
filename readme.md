@@ -1,6 +1,11 @@
 # SmallChop
 
-A Go based URL shortener designed to be easily scalable, and highly performant.
+SmallChop is a URL shortener built with Go, crafted for scalability and high performance.
+
+Designed as a lightweight, containerized application, SmallChop leverages Docker and a microservice-oriented architecture to deliver quick, reliable URL shortening and redirection.
+It features a caching layer with Redis for ultra-fast access to frequently requested URLs, persistent storage with MongoDB, and a reverse proxy with Caddy for secure, seamless HTTPS access.
+
+With a robust CI/CD pipeline for automated deployment, SmallChop is a production-ready solution that balances efficiency and scalability, making it ideal for handling high-traffic environments with ease.
 
 ## Tech Stack:
 
@@ -14,7 +19,16 @@ A Go based URL shortener designed to be easily scalable, and highly performant.
 
 ![diagram](./docs/assets/high-level.png)
 
-## Architecture and App Flow
+<details>
+<summary>Click here for a discussion about scaling this service.</summary>
+
+In an enterprise environment, SmallChop would typically be deployed with Kubernetes to enable high scalability and manageability. By using Kubernetes, the application could run across multiple pods and nodes, allowing for automatic scaling in response to traffic spikes. This setup would also enable seamless updates and rollbacks through Kubernetes’ built-in deployment strategies, such as rolling updates. Additionally, a load balancer would be essential to distribute incoming traffic evenly across instances, ensuring high availability and minimizing latency. This would also allow easy integration of a more robust secret manager than what is currently implemented in this project.
+
+However, for a project of this scale and purpose, using Kubernetes and a load balancer would be overkill. Instead, SmallChop is deployed using Docker Compose on a single DigitalOcean Droplet, which provides a streamlined, cost-effective environment suitable for demonstration and portfolio purposes. This approach keeps infrastructure simple while showcasing containerized microservices architecture. It maintains the essential components—caching, persistent storage, and reverse proxy—while remaining accessible and manageable for a smaller deployment. This setup can later be adapted to a more advanced Kubernetes environment if needed, making SmallChop flexible and adaptable for future growth.
+
+</details>
+
+## Architecture and App Routes
 
 ![diagram](./docs/assets/routes.png)
 
@@ -72,17 +86,17 @@ A Go based URL shortener designed to be easily scalable, and highly performant.
 
 #### Husky
 
-  -   Used to catch basic formatting, linting, and test failures before code is even committed.
-  -   This can be bypassed if necessary but act as a first line of defense.
+-   Used to catch basic formatting, linting, and test failures before code is even committed.
+-   This can be bypassed if necessary but act as a first line of defense.
 
 ### GitHub Actions
 
 #### **CI Pipeline**
 
-  -   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
+-   Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
 
 #### **CD Pipeline**
-    
+
 The CD pipeline consists of two primary jobs:
 
 1. Build Job: Handles code checkout, builds the Docker image, and pushes it to DockerHub.
