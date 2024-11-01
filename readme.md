@@ -125,16 +125,7 @@ The CD pipeline consists of two primary jobs:
 1. Build Job: Handles code checkout, builds the Docker image, and pushes it to DockerHub.
 2. Deploy Job: Connects to the production server and deploys the latest Docker image.
 
-## App Setup
-
-### CI/CD Workflow
-
-1. Add relevant secrets to GitHub repository.
-    - You'll need to add the following:
-        - Dockerhub token, and username.
-        - Deployment secrets (This example uses Digital Ocean)
-        - A copy of your production .env file.
-
+## 🤝 Contributing
 ### Running Locally
 
 #### Prerequisites
@@ -235,6 +226,9 @@ docker-compose down -v
 -   Permission Issues:
     -   If you encounter permission issues with volumes, adjust the permissions or run Docker with appropriate privileges.
 
+### Submit a pull request
+
+If you'd like to contribute, please fork the repository and open a pull request to the `main` branch.
 ### Todo
 
 <details>
