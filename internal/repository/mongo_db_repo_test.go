@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
+
+	"gochop-it/internal/utils"
 )
 
-// SetupTestMongoRepo initializes a test MongoRepo instance using MongoDB's in-memory test framework.
 func SetupTestMongoRepo(t *testing.T) (*MongoRepo, context.Context) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 	ctx := context.TODO()
@@ -27,40 +29,55 @@ func TestSaveURL(t *testing.T) {
 
 	mt.Run("test save URL", func(mt *mtest.T) {
 		// Set up mock MongoDB responses
-		// First response for the FindOne operation should return no documents
-		mt.AddMockResponses(mtest.CreateCursorResponse(0, "url_shortener.urls", mtest.FirstBatch))
-		// Second response for the InsertOne operation should be successful
-		mt.AddMockResponses(mtest.CreateSuccessResponse())
+		mt.AddMockResponses(
+			// Mock response for FindOne (no document found)
+			mtest.CreateCursorResponse(0, "url_shortener.urls", mtest.FirstBatch),
+			// Mock response for InsertOne (success)
+			mtest.CreateSuccessResponse(),
+		)
 
 		repo := &MongoRepo{
 			Client:     mt.Client,
 			Collection: mt.Coll,
+			GetNextIDFunc: func(counterName string) (int64, error) {
+				return 12345, nil // Return fixed ID for testing
+			},
 		}
 
 		// Call SaveURL
-		shortURL := "short123"
 		longURL := "https://example.com"
-		returnedShortURL, err := repo.SaveURL(context.TODO(), shortURL, longURL)
+		shortCode, err := repo.SaveURL(context.TODO(), longURL)
 		if err != nil {
 			t.Fatalf("Failed to save URL: %v", err)
 		}
 
-		// Assert the returned short URL is not empty
-		if returnedShortURL == "" {
-			t.Errorf("Expected a valid short URL, got an empty string")
+		// Assert the returned short code is correct
+		expectedShortCode := utils.Encode(12345)
+		if shortCode != expectedShortCode {
+			t.Errorf("Expected short code %s, got %s", expectedShortCode, shortCode)
 		}
 	})
 }
 
-// TestFindURL tests the FindURL function for retrieving a URL by its short URL.
-func TestFindURL(t *testing.T) {
+// TestFindURLByID tests the FindURLByID function for retrieving a URL by its ID.
+func TestFindURLByID(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
-	mt.Run("test find URL", func(mt *mtest.T) {
+	mt.Run("test find URL by ID", func(mt *mtest.T) {
+		// Prepare the expected URL document
+		expectedURL := URL{
+			ID:          12345,
+			CreatedAt:   (time.Now()),
+			LongURL:     "https://example.com",
+			AccessCount: 0,
+		}
+
 		// Set up mock MongoDB responses
 		mt.AddMockResponses(mtest.CreateCursorResponse(1, "url_shortener.urls", mtest.FirstBatch, bson.D{
-			{Key: "shortURL", Value: "short123"},
-			{Key: "longURL", Value: "https://example.com"},
+			{Key: "_id", Value: expectedURL.ID},
+			{Key: "createdAt", Value: expectedURL.CreatedAt},
+			{Key: "longURL", Value: expectedURL.LongURL},
+			{Key: "accessCount", Value: expectedURL.AccessCount},
 		}))
 
 		repo := &MongoRepo{
@@ -68,28 +85,38 @@ func TestFindURL(t *testing.T) {
 			Collection: mt.Coll,
 		}
 
-		// Call FindURL
-		urlDoc, err := repo.FindURL(context.TODO(), "short123")
+		// Call FindURLByID
+		urlDoc, err := repo.FindURLByID(context.TODO(), expectedURL.ID)
 		if err != nil {
 			t.Fatalf("Failed to find URL: %v", err)
 		}
 
 		// Assert the long URL is correct
-		if urlDoc.LongURL != "https://example.com" {
-			t.Errorf("Expected long URL %s, got %s", "https://example.com", urlDoc.LongURL)
+		if urlDoc.LongURL != expectedURL.LongURL {
+			t.Errorf("Expected long URL %s, got %s", expectedURL.LongURL, urlDoc.LongURL)
 		}
 	})
 }
 
-// TestFindByLongURL tests the FindByLongURL function for retrieving a URL by its long URL.
-func TestFindByLongURL(t *testing.T) {
+// TestFindURLByLongURL tests the FindURLByLongURL function for retrieving a URL by its long URL.
+func TestFindURLByLongURL(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
-	mt.Run("test find by long URL", func(mt *mtest.T) {
+	mt.Run("test find URL by long URL", func(mt *mtest.T) {
+		// Prepare the expected URL document
+		expectedURL := URL{
+			ID:          12345,
+			CreatedAt:   (time.Now()),
+			LongURL:     "https://example.com",
+			AccessCount: 0,
+		}
+
 		// Set up mock MongoDB responses
 		mt.AddMockResponses(mtest.CreateCursorResponse(1, "url_shortener.urls", mtest.FirstBatch, bson.D{
-			{Key: "shortURL", Value: "short123"},
-			{Key: "longURL", Value: "https://example.com"},
+			{Key: "_id", Value: expectedURL.ID},
+			{Key: "createdAt", Value: expectedURL.CreatedAt},
+			{Key: "longURL", Value: expectedURL.LongURL},
+			{Key: "accessCount", Value: expectedURL.AccessCount},
 		}))
 
 		repo := &MongoRepo{
@@ -97,15 +124,15 @@ func TestFindByLongURL(t *testing.T) {
 			Collection: mt.Coll,
 		}
 
-		// Call FindByLongURL
-		shortURL, err := repo.FindShortURLByLongURL(context.TODO(), "https://example.com")
+		// Call FindURLByLongURL
+		urlDoc, err := repo.FindURLByLongURL(context.TODO(), expectedURL.LongURL)
 		if err != nil {
 			t.Fatalf("Failed to find URL by long URL: %v", err)
 		}
 
-		// Assert the short URL is correct
-		if shortURL != "short123" {
-			t.Errorf("Expected short URL %s, got %s", "short123", shortURL)
+		// Assert the ID is correct
+		if urlDoc.ID != expectedURL.ID {
+			t.Errorf("Expected ID %d, got %d", expectedURL.ID, urlDoc.ID)
 		}
 	})
 }
@@ -124,7 +151,7 @@ func TestIncrementAccessCount(t *testing.T) {
 		}
 
 		// Call IncrementAccessCount
-		err := repo.IncrementAccessCount(context.TODO(), "short123")
+		err := repo.IncrementAccessCount(context.TODO(), 12345)
 		if err != nil {
 			t.Fatalf("Failed to increment access count: %v", err)
 		}

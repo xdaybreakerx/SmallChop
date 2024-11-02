@@ -252,3 +252,4 @@ If you'd like to contribute, please fork the repository and open a pull request 
 -   This project used the [tutorial from Annis Souames of Stream.io](https://getstream.io/blog/url-shortener/) for the basic HTMX + Go + Redis implementation. 
 -   This project referenced this [Stack Overflow discussion](https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener) about Bijective Functions for implementing the more complex shortening algorithm.
 -   If you're curious about Caddy vs Nginx, this [article by Tyler Langlois](<(https://blog.tjll.net/reverse-proxy-hot-dog-eating-contest-caddy-vs-nginx/)>) discusses performance considerations.
+-   This projects URL shortening short codes are derived from sequential integer IDs from MongoDB. As this increments, future short URLs can be predicted. In order to mitigate this, we could implement hashing or randomization however this is excessive for this projects scope. 

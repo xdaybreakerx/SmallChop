@@ -156,7 +156,7 @@ func TestRedirectHandler(t *testing.T) {
 		// Extract the short code from the path
 		code := "testShortCode" // Mock extracting the code from URL path
 
-		longURL, err := redisRepo.GetLongURL(ctx, nil, code, 0)
+		longURL, err := redisRepo.GetLongURL(ctx, code, nil, 0)
 		if err != nil {
 			http.Error(writer, "Shortened URL not found", http.StatusNotFound)
 			return

@@ -7,7 +7,26 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
+
+	"gochop-it/internal/utils"
 )
+
+// MockMongoRepo implements URLRepository for testing purposes
+type MockMongoRepo struct{}
+
+// Ensure MockMongoRepo implements URLRepository
+var _ URLRepository = (*MockMongoRepo)(nil)
+
+func (m *MockMongoRepo) FindURLByID(ctx context.Context, id int64) (*URL, error) {
+	return &URL{
+		ID:      id,
+		LongURL: "https://example.com",
+	}, nil
+}
+
+func (m *MockMongoRepo) IncrementAccessCount(ctx context.Context, id int64) error {
+	return nil
+}
 
 // Create a mock Redis Client using miniredis
 func createMockRedis() (*redis.Client, *miniredis.Miniredis) {
@@ -35,8 +54,8 @@ func TestSetKey(t *testing.T) {
 	redisRepo := &RedisRepo{Client: rdb}
 
 	// Set a test key-value pair in Redis
-	key := "shortURL123"
-	value := "http://example.com"
+	key := utils.Encode(12345) // Encoded short code
+	value := "https://example.com"
 
 	// Act: Set the key in Redis using RedisRepo
 	err := redisRepo.SetKey(ctx, key, value, 0)
@@ -63,8 +82,8 @@ func TestGetLongURL(t *testing.T) {
 	redisRepo := &RedisRepo{Client: rdb}
 
 	// Set a test key-value pair in Redis (using miniredis directly)
-	key := "shortURL123"
-	value := "http://example.com"
+	key := utils.Encode(12345) // Encoded short code
+	value := "https://example.com"
 
 	// Check the error return value of mockRedis.Set
 	if err := mock.Set(key, value); err != nil {
@@ -72,13 +91,54 @@ func TestGetLongURL(t *testing.T) {
 	}
 
 	// Act: Try to retrieve the key from Redis
-	retrievedValue, err := redisRepo.GetLongURL(ctx, nil, key, 10*time.Minute)
+	longURL, err := redisRepo.GetLongURL(ctx, key, nil, 10*time.Minute)
 	if err != nil {
 		t.Fatalf("Failed to retrieve key from Redis: %v", err)
 	}
 
 	// Assert: Check if the retrieved value matches the stored value
-	if retrievedValue != value {
-		t.Errorf("Expected %s, got %s", value, retrievedValue)
+	if longURL != value {
+		t.Errorf("Expected %s, got %s", value, longURL)
+	}
+}
+
+// TestGetLongURLMiss tests the GetLongURL function when the key is not found in Redis and must be fetched from MongoDB
+func TestGetLongURLMiss(t *testing.T) {
+	// Create a context for Redis operations
+	ctx := context.TODO()
+	// Create mock Redis Client and miniredis for testing
+	rdb, mock := createMockRedis()
+	// Initialize RedisRepo with the mock Redis Client
+	redisRepo := &RedisRepo{Client: rdb}
+
+	key := utils.Encode(12345) // Encoded short code
+	expectedURL := "https://example.com"
+
+	// Ensure the key does not exist in Redis
+	if mock.Exists(key) {
+		t.Fatalf("Key %s should not exist in Redis", key)
+	}
+
+	// Create an instance of MockMongoRepo
+	mongoRepo := &MockMongoRepo{}
+
+	// Act: Try to retrieve the key from Redis (will miss and fetch from MongoDB)
+	longURL, err := redisRepo.GetLongURL(ctx, key, mongoRepo, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("Failed to retrieve key from Redis: %v", err)
+	}
+
+	// Assert: Check if the retrieved value matches the expected value
+	if longURL != expectedURL {
+		t.Errorf("Expected %s, got %s", expectedURL, longURL)
+	}
+
+	// Verify that the key is now set in Redis
+	storedValue, err := mock.Get(key)
+	if err != nil {
+		t.Fatalf("Failed to get key from mock Redis: %v", err)
+	}
+	if storedValue != expectedURL {
+		t.Errorf("Expected %s in Redis, got %s", expectedURL, storedValue)
 	}
 }
