@@ -52,6 +52,7 @@ However, for a project of this scale and purpose, using Kubernetes and a load ba
 </details>
 
 ## Architecture and App Routes
+
 SmallChop exposes routes for creating, retrieving, and redirecting shortened URLs, with caching mechanisms for high-frequency requests.
 ![diagram](./docs/assets/routes.png)
 
@@ -124,16 +125,7 @@ The CD pipeline consists of two primary jobs:
 1. Build Job: Handles code checkout, builds the Docker image, and pushes it to DockerHub.
 2. Deploy Job: Connects to the production server and deploys the latest Docker image.
 
-## App Setup
-
-### CI/CD Workflow
-
-1. Add relevant secrets to GitHub repository.
-    - You'll need to add the following:
-        - Dockerhub token, and username.
-        - Deployment secrets (This example uses Digital Ocean)
-        - A copy of your production .env file.
-
+## 🤝 Contributing
 ### Running Locally
 
 #### Prerequisites
@@ -234,18 +226,30 @@ docker-compose down -v
 -   Permission Issues:
     -   If you encounter permission issues with volumes, adjust the permissions or run Docker with appropriate privileges.
 
+### Submit a pull request
+
+If you'd like to contribute, please fork the repository and open a pull request to the `main` branch.
 ### Todo
 
 <details>
 <summary>click here for the todo list</summary>
 
+-   [x] HTMX + Go + Redis MVP
 -   [x] pre commit hooks
 -   [x] testing
+-   [x] ci with github actions
 -   [x] rate limiter
 -   [x] persistent storage
--   [x] caching layer
+-   [x] change Redis to caching layer
 -   [x] cd with github actions
 -   [x] deployment
--   [ ] better shortener algo
+-   [x] better shortener algo
 
 </details>
+
+### References and further reading.
+
+-   This project used the [tutorial from Annis Souames of Stream.io](https://getstream.io/blog/url-shortener/) for the basic HTMX + Go + Redis implementation. 
+-   This project referenced this [Stack Overflow discussion](https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener) about Bijective Functions for implementing the more complex shortening algorithm.
+-   If you're curious about Caddy vs Nginx, this [article by Tyler Langlois](<(https://blog.tjll.net/reverse-proxy-hot-dog-eating-contest-caddy-vs-nginx/)>) discusses performance considerations.
+-   This projects URL shortening short codes are derived from sequential integer IDs from MongoDB. As this increments, future short URLs can be predicted. In order to mitigate this, we could implement hashing or randomization however this is excessive for this projects scope. 

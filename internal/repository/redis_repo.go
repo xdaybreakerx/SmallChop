@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+
+	"gochop-it/internal/utils"
 )
 
 type RedisRepo struct {
@@ -37,23 +39,30 @@ func (r *RedisRepo) SetKey(ctx context.Context, key string, value string, ttl ti
 
 // GetLongURL retrieves the original URL from Redis based on the given short URL
 // If not found, it lazy-loads from MongoDB and stores it in Redis
-func (r *RedisRepo) GetLongURL(ctx context.Context, mongoRepo *MongoRepo, shortURL string, ttl time.Duration) (string, error) {
+func (r *RedisRepo) GetLongURL(ctx context.Context, shortCode string, mongoRepo URLRepository, ttl time.Duration) (string, error) {
 	// Try to get the long URL from Redis first
-	longURL, err := r.Client.Get(ctx, shortURL).Result()
+	longURL, err := r.Client.Get(ctx, shortCode).Result()
 	if err == redis.Nil {
-		// If not found in Redis, lazy-load from MongoDB
-		urlDoc, err := mongoRepo.FindURL(ctx, shortURL)
+		// Decode the short code to get the ID
+		id := utils.Decode(shortCode)
+		if id == -1 {
+			return "", fmt.Errorf("invalid short URL")
+		}
+		// Get URL document from MongoDB
+		urlDoc, err := mongoRepo.FindURLByID(ctx, id)
 		if err != nil {
 			return "", fmt.Errorf("short URL not found in MongoDB: %w", err)
 		}
 
-		// Store the long URL in Redis with a TTL for future requests
-		err = r.SetKey(ctx, shortURL, urlDoc.LongURL, ttl)
+		longURL = urlDoc.LongURL
+
+		// Store the long URL in Redis with a TTL
+		err = r.SetKey(ctx, shortCode, longURL, ttl)
 		if err != nil {
 			return "", err
 		}
 
-		return urlDoc.LongURL, nil
+		return longURL, nil
 	} else if err != nil {
 		return "", fmt.Errorf("failed to retrieve from Redis: %v", err)
 	}
