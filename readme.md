@@ -22,6 +22,19 @@ With a robust CI/CD pipeline for automated deployment, SmallChop is a production
 -   Caddy:
     -   Acts as the reverse proxy and TLS provider, enabling secure HTTPS access and efficient routing of requests to the backend service.
 
+### Dependency baseline (5 October 2026)
+
+- Go 1.27.1; CI reads `go.mod`, and the Docker builder uses the same release.
+- Go Redis client v9.22.0, MongoDB driver v2.9.1, miniredis v2.39.0, and `x/time` v0.16.0.
+- HTMX 4.0.0 and Tailwind browser 4.3.3, with the existing error-response swap behavior retained.
+- Docker services: Redis 8.10.2, MongoDB 9.0.2, Caddy 2.11.6; application runtime: Alpine 3.24.2.
+- golangci-lint 2.14.0; GitHub Actions are pinned to verified release commits.
+
+For local Go development, use Go 1.27.1 and run `go test -race ./...` and `go vet ./...`.
+The Docker build downloads the locked modules without updating them. Caddy 2.11.6 is the latest verified published Alpine image; the 2.11.7 source release has no published Alpine tag yet.
+MongoDB 9.0.2 was selected for a fresh-container baseline. Existing databases need a supported server upgrade path before switching major server versions; this dependency update does not migrate existing volumes.
+CD is manual (`workflow_dispatch`) so opening or merging a PR cannot restart production against the new database major version. Complete the release-gating and database upgrade work before running it.
+
 ### Development & Deployment Tools
 
 -   Docker:
@@ -175,14 +188,14 @@ app Service
 
 redis Service
 
--   Image: redis:alpine
+-   Image: redis:8.10.2-alpine
 -   Command: Starts Redis with a password from .env
 -   Environment Variables: Loaded from .env
 -   Ports: Not exposed externally
 
 mongo Service
 
--   Image: mongo:latest
+-   Image: mongo:9.0.2
 -   Volumes:
     -   mongo-data for persistent storage
 -   mongo-user-init.js for initialization
@@ -191,7 +204,7 @@ mongo Service
 
 caddy Service (Production Only)
 
--   Image: caddy:2.8.4-alpine
+-   Image: caddy:2.11.6-alpine
 -   Ports:
     -   Exposes port 80 for HTTP
     -   Exposes port 443 for HTTPS

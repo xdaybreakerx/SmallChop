@@ -65,7 +65,9 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullShortURL := fmt.Sprintf("http://smallchop.net/r/%s", shortCode)
-	fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortCode, fullShortURL)
+	if _, err := fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortCode, fullShortURL); err != nil {
+		log.Printf("Error writing shortened URL response: %v", err)
+	}
 }
 
 func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {

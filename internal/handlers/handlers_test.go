@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"gochop-it/internal/repository"
 )
 
@@ -42,7 +42,9 @@ func TestRootHandler(t *testing.T) {
 	// Create handler function
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
 		// Mock template rendering
-		fmt.Fprintln(writer, "Test Index Page")
+		if _, err := fmt.Fprintln(writer, "Test Index Page"); err != nil {
+			t.Fatalf("Write index response: %v", err)
+		}
 	})
 
 	// Call the handler
@@ -100,7 +102,9 @@ func TestShortenHandler(t *testing.T) {
 		}
 
 		// Return the shortened URL
-		fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL)
+		if _, err := fmt.Fprintf(writer, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortURL, fullShortURL); err != nil {
+			t.Fatalf("Write shorten response: %v", err)
+		}
 	})
 
 	// Call the handler
