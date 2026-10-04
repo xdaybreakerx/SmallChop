@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.27.1-alpine AS builder
 
 # Install git to fetch dependencies
 RUN apk add --no-cache git
@@ -7,18 +7,19 @@ RUN apk add --no-cache git
 # Set the working directory inside the container
 WORKDIR /go/src/app
 
-# Copy the entire project into the container
+# Download the locked dependencies before copying application sources
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the project and build without changing the dependency lockfile
 COPY . .
 
-# Fetch dependencies
-RUN go get -d -v ./...
-
 # Build the Go app (assumes main.go is under ./cmd/server/)
-RUN go build -o /go/bin/app ./cmd/server/
+RUN go build -mod=readonly -o /go/bin/app ./cmd/server/
 
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.24.2
 
 # Install CA certificates to allow HTTPS
 RUN apk --no-cache add ca-certificates
