@@ -2,143 +2,71 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-
-	"gochop-it/internal/utils"
 )
 
-// MockMongoRepo implements URLRepository for testing purposes
-type MockMongoRepo struct{}
-
-// Ensure MockMongoRepo implements URLRepository
-var _ URLRepository = (*MockMongoRepo)(nil)
-
-func (m *MockMongoRepo) FindURLByID(ctx context.Context, id int64) (*URL, error) {
-	return &URL{
-		ID:      id,
-		LongURL: "https://example.com",
-	}, nil
-}
-
-func (m *MockMongoRepo) IncrementAccessCount(ctx context.Context, id int64) error {
-	return nil
-}
-
-// Create a mock Redis Client using miniredis
-func createMockRedis() (*redis.Client, *miniredis.Miniredis) {
-	// Start a mock Redis server
-	mockRedis, err := miniredis.Run()
-	if err != nil {
-		panic("Unable to start mock redis server")
-	}
-
-	// Create a Redis Client connected to the mock Redis server
-	rdb := redis.NewClient(&redis.Options{
-		Addr: mockRedis.Addr(),
+func TestCacheReadWriteAndMiss(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Error(err)
+		}
 	})
-
-	return rdb, mockRedis
-}
-
-// Test for SetKey: ensure that a key can be set in Redis and no errors are returned.
-func TestSetKey(t *testing.T) {
-	// Create a context for Redis operations
-	ctx := context.TODO()
-	// Create mock Redis Client and miniredis for testing
-	rdb, mock := createMockRedis()
-	// Initialize RedisRepo with the mock Redis Client
-	redisRepo := &RedisRepo{Client: rdb}
-
-	// Set a test key-value pair in Redis
-	key := utils.Encode(12345) // Encoded short code
-	value := "https://example.com"
-
-	// Act: Set the key in Redis using RedisRepo
-	err := redisRepo.SetKey(ctx, key, value, 0)
-	if err != nil {
-		t.Errorf("Failed to set key %s: %v", key, err)
+	repo := &RedisRepo{Client: client}
+	ctx := context.Background()
+	if _, err := repo.GetLongURL(ctx, "c"); !errors.Is(err, redis.Nil) {
+		t.Fatalf("miss error %v", err)
 	}
-
-	storedValue, err := mock.Get(key)
-	if err != nil {
-		t.Fatalf("Failed to get key from mock Redis: %v", err)
+	target := "https://example.com/a%2Fb?q=a%2Bb#fragment"
+	if err := repo.SetKey(ctx, "c", target, time.Hour); err != nil {
+		t.Fatal(err)
 	}
-	if storedValue != value {
-		t.Errorf("Expected %s, got %s", value, storedValue)
+	if got, err := repo.GetLongURL(ctx, "c"); err != nil || got != target {
+		t.Fatalf("got %q, error %v", got, err)
+	}
+	if server.TTL("c") != time.Hour {
+		t.Fatalf("TTL %s", server.TTL("c"))
 	}
 }
 
-// Test for GetLongURL: ensure that a stored key-value pair can be retrieved successfully.
-func TestGetLongURL(t *testing.T) {
-	// Create a context for Redis operations
-	ctx := context.TODO()
-	// Create mock Redis Client and miniredis for testing
-	rdb, mock := createMockRedis()
-	// Initialize RedisRepo with the mock Redis Client
-	redisRepo := &RedisRepo{Client: rdb}
-
-	// Set a test key-value pair in Redis (using miniredis directly)
-	key := utils.Encode(12345) // Encoded short code
-	value := "https://example.com"
-
-	// Check the error return value of mockRedis.Set
-	if err := mock.Set(key, value); err != nil {
-		t.Fatalf("Failed to set key in mock Redis: %v", err)
-	}
-
-	// Act: Try to retrieve the key from Redis
-	longURL, err := redisRepo.GetLongURL(ctx, key, nil, 10*time.Minute)
+// Accept a TCP connection but never reply, exercising real go-redis socket deadlines.
+func TestRedisUnresponsivePeerIsBounded(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("Failed to retrieve key from Redis: %v", err)
+		t.Fatal(err)
 	}
-
-	// Assert: Check if the retrieved value matches the stored value
-	if longURL != value {
-		t.Errorf("Expected %s, got %s", value, longURL)
+	defer func() { _ = listener.Close() }()
+	done := make(chan struct{})
+	release := make(chan struct{})
+	defer func() { close(release); <-done }()
+	go func() {
+		defer close(done)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		// Deliberately never answer the client handshake.
+		<-release
+	}()
+	opts := redisOptions(40 * time.Millisecond)
+	opts.Addr = listener.Addr().String()
+	client := redis.NewClient(opts)
+	defer func() { _ = client.Close() }()
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := (&RedisRepo{Client: client}).Ping(ctx); err == nil {
+		t.Fatal("unresponsive peer accepted")
 	}
-}
-
-// TestGetLongURLMiss tests the GetLongURL function when the key is not found in Redis and must be fetched from MongoDB
-func TestGetLongURLMiss(t *testing.T) {
-	// Create a context for Redis operations
-	ctx := context.TODO()
-	// Create mock Redis Client and miniredis for testing
-	rdb, mock := createMockRedis()
-	// Initialize RedisRepo with the mock Redis Client
-	redisRepo := &RedisRepo{Client: rdb}
-
-	key := utils.Encode(12345) // Encoded short code
-	expectedURL := "https://example.com"
-
-	// Ensure the key does not exist in Redis
-	if mock.Exists(key) {
-		t.Fatalf("Key %s should not exist in Redis", key)
-	}
-
-	// Create an instance of MockMongoRepo
-	mongoRepo := &MockMongoRepo{}
-
-	// Act: Try to retrieve the key from Redis (will miss and fetch from MongoDB)
-	longURL, err := redisRepo.GetLongURL(ctx, key, mongoRepo, 10*time.Minute)
-	if err != nil {
-		t.Fatalf("Failed to retrieve key from Redis: %v", err)
-	}
-
-	// Assert: Check if the retrieved value matches the expected value
-	if longURL != expectedURL {
-		t.Errorf("Expected %s, got %s", expectedURL, longURL)
-	}
-
-	// Verify that the key is now set in Redis
-	storedValue, err := mock.Get(key)
-	if err != nil {
-		t.Fatalf("Failed to get key from mock Redis: %v", err)
-	}
-	if storedValue != expectedURL {
-		t.Errorf("Expected %s in Redis, got %s", expectedURL, storedValue)
+	if time.Since(start) > 500*time.Millisecond {
+		t.Fatalf("Redis exceeded budget: %s", time.Since(start))
 	}
 }

@@ -12,24 +12,31 @@ import (
 	"strings"
 	"time"
 
+	"gochop-it/internal/config"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
 )
 
 type URLStore interface {
-	repository.URLRepository
+	FindURLByID(ctx context.Context, id int64) (*repository.URL, error)
 	SaveURL(ctx context.Context, longURL string) (string, error)
 }
 
+type URLCache interface {
+	GetLongURL(ctx context.Context, shortCode string) (string, error)
+	SetKey(ctx context.Context, key, value string, ttl time.Duration) error
+}
+
 type Handlers struct {
+	Timeouts      config.Timeouts
 	MongoRepo     URLStore
-	RedisRepo     *repository.RedisRepo
+	RedisRepo     URLCache
 	Template      *template.Template
 	TemplatePath  string
 	PublicBaseURL string
 }
 
-func NewHandlers(mongoRepo URLStore, redisRepo *repository.RedisRepo, publicBaseURL string) (*Handlers, error) {
+func NewHandlers(mongoRepo URLStore, redisRepo URLCache, publicBaseURL string, timeouts config.Timeouts) (*Handlers, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("could not get working directory: %v", err)
@@ -41,6 +48,7 @@ func NewHandlers(mongoRepo URLStore, redisRepo *repository.RedisRepo, publicBase
 	}
 
 	return &Handlers{
+		Timeouts:      timeouts,
 		MongoRepo:     mongoRepo,
 		RedisRepo:     redisRepo,
 		Template:      tmpl,
@@ -67,7 +75,6 @@ func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -95,13 +102,17 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortCode, err := h.MongoRepo.SaveURL(ctx, destination)
+	ctx, cancel := context.WithTimeout(r.Context(), h.Timeouts.Request)
+	defer cancel()
+	dbCtx, dbCancel := context.WithTimeout(ctx, h.Timeouts.Mongo)
+	defer dbCancel()
+	shortCode, err := h.MongoRepo.SaveURL(dbCtx, destination)
 	if err != nil {
 		if errors.Is(err, utils.ErrInvalidURL) {
 			http.Error(w, "Invalid destination URL", http.StatusBadRequest)
 			return
 		}
-		http.Error(w, "Failed to save URL", http.StatusInternalServerError)
+		storageFailure(w, err)
 		return
 	}
 
@@ -113,7 +124,6 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -133,29 +143,42 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to get the long URL from Redis cache
-	longURL, err := h.RedisRepo.GetLongURL(ctx, key, h.MongoRepo, 1*time.Hour)
-	if err != nil {
-		// If not found in Redis, get the URL from MongoDB
-		urlDoc, err := h.MongoRepo.FindURLByID(ctx, id)
+	ctx, cancel := context.WithTimeout(r.Context(), h.Timeouts.Request)
+	defer cancel()
+	cacheCtx, cacheCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
+	longURL, cacheErr := h.RedisRepo.GetLongURL(cacheCtx, key)
+	cacheCancel()
+	if ctx.Err() != nil {
+		storageFailure(w, ctx.Err())
+		return
+	}
+	if cacheErr != nil {
+		dbCtx, dbCancel := context.WithTimeout(ctx, h.Timeouts.Mongo)
+		urlDoc, err := h.MongoRepo.FindURLByID(dbCtx, id)
+		dbCancel()
 		if err != nil {
-			http.Error(w, "Shortened URL not found", http.StatusNotFound)
+			if errors.Is(err, repository.ErrNotFound) {
+				http.Error(w, "Shortened URL not found", http.StatusNotFound)
+			} else {
+				storageFailure(w, err)
+			}
 			return
 		}
 		longURL = urlDoc.LongURL
-
-		// Store in Redis for future requests
-		err = h.RedisRepo.SetKey(ctx, key, longURL, 1*time.Hour)
+		fillCtx, fillCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
+		err = h.RedisRepo.SetKey(fillCtx, key, longURL, time.Hour)
+		fillCancel()
 		if err != nil {
-			log.Printf("Failed to set Redis cache: %v", err)
+			log.Println("Cache fill failed; serving database destination")
 		}
 	}
-
-	// Increment the access count
-	err = h.MongoRepo.IncrementAccessCount(ctx, id)
-	if err != nil {
-		log.Printf("Failed to increment access count: %v", err)
-	}
-
 	http.Redirect(w, r, longURL, http.StatusPermanentRedirect)
+}
+
+func storageFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, repository.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		http.Error(w, "Storage temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	http.Error(w, "Storage operation failed", http.StatusInternalServerError)
 }
