@@ -1,4 +1,5 @@
-# Standalone file: do not merge with the production docker-compose.yml.
+# Standalone file: do not merge with deploy/docker-compose.yml.
+# Paths are repository-root relative; use scripts/local.sh or --project-directory .
 name: smallchop-local
 services:
   caddy:
@@ -9,7 +10,7 @@ services:
       proxy:
         ipv4_address: ${LOCAL_PROXY_IP:-172.30.80.2}
     volumes:
-      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
     depends_on:
       app:
         condition: service_healthy
@@ -55,7 +56,7 @@ services:
     env_file: .env.local
     volumes:
       - mongo-data:/data/db
-      - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro
+      - ./deploy/mongo/mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro
     healthcheck:
       test:
         - CMD-SHELL

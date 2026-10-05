@@ -9,11 +9,11 @@ case "$project" in
 esac
 
 compose() {
-    docker compose --env-file .env.local --project-name "$project" -f compose.local.yml "$@"
+    docker compose --project-directory . --env-file .env.local --project-name "$project" -f deploy/compose.local.yml "$@"
 }
 
 if [ ! -f .env.local ]; then
-    echo 'First run: cp .env.local.example .env.local' >&2
+    echo 'First run: cp deploy/env/local.env.example .env.local' >&2
     exit 1
 fi
 

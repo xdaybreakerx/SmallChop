@@ -34,6 +34,12 @@ jobs:
                   gofmt -s -w .
                   git diff --exit-code -- '*.go'
 
+            - name: Validate local deployment configuration
+              run: |
+                  sh -n scripts/local.sh
+                  cp deploy/env/local.env.example .env.local
+                  docker compose --project-directory . --env-file .env.local -f deploy/compose.local.yml config --quiet
+
             - name: Run Golangci-lint
               uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
               with:

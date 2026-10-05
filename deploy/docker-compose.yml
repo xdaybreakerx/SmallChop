@@ -1,3 +1,5 @@
+# Paths are repository-root relative. Run from the repository root with:
+# docker compose --project-directory . --env-file .env -f deploy/docker-compose.yml ...
 services:
   caddy:
     image: caddy:2.11.6-alpine
@@ -9,7 +11,7 @@ services:
       proxy:
         ipv4_address: ${PROXY_IP:-172.30.81.2}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     env_file:
@@ -41,7 +43,7 @@ services:
       - .env
     volumes:
       - mongo-data:/data/db # Persistent storage
-      - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script
+      - ./deploy/mongo/mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro # RBAC init script
 
 volumes:
   mongo-data:

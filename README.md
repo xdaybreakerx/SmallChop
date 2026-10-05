@@ -37,6 +37,35 @@ The Docker build downloads the locked modules without updating them. Caddy 2.11.
 MongoDB 9.0.2 was selected for a fresh-container baseline. Existing databases need a supported server upgrade path before switching major server versions; this dependency update does not migrate existing volumes.
 CD is manual (`workflow_dispatch`) so opening or merging a PR cannot restart production against the new database major version. Complete the release-gating and database upgrade work before running it.
 
+### Repository layout
+
+```text
+cmd/server/                 Application entry point
+internal/                   Go packages, package tests, and HTML templates
+deploy/
+  docker-compose.yml        Production Compose configuration
+  compose.local.yml         Disposable local Compose configuration
+  caddy/                    Production and local Caddyfiles
+  mongo/                    MongoDB initialization script
+  env/                      Example environment files
+scripts/                    Local lifecycle and HTTP smoke helpers
+docs/assets/                Published architecture diagrams
+docs/bruno/                 API request collection
+.github/workflows/          CI and manual CD
+.husky/hooks/               Local commit checks
+Dockerfile                  Application image build (repository-root context)
+```
+
+Real `.env`, `.env.local`, and `.env.github-actions` files remain ignored at the repository root. Local reference/review documents remain ignored. Copy examples from `deploy/env/` into the root when setting up an environment.
+
+Compose paths are deliberately anchored to the repository root. The local helper handles this automatically. For future production configuration checks, run from the root after configuring `.env`:
+
+```sh
+docker compose --project-directory . --env-file .env -f deploy/docker-compose.yml config --quiet
+```
+
+Use these explicit arguments for any direct production Compose command; bare `docker compose` no longer selects the relocated configuration. Keeping `--project-directory .` preserves root-relative environment/build paths and the existing default project name rather than selecting `deploy`. Existing commands or automation must adopt the new file path; select any intended override explicitly with another `-f` argument. See [Docker's Compose path and project-directory rules](https://docs.docker.com/reference/cli/docker/compose/).
+
 ### Development & Deployment Tools
 
 -   Docker:
@@ -131,7 +160,7 @@ Husky pre-commit hooks ensure that basic formatting, linting, and tests are enfo
 
 #### **CI Pipeline**
 
-Checks formatting without accepting changes to Go sources, runs lint and race-enabled tests, and exercises bounded encoder/decoder fuzz targets. A `go-coverage` artifact provides coverage diagnostics; there is no percentage gate. The same checks can be run locally:
+Checks formatting without accepting changes to Go sources, validates the local deployment configuration/helper syntax, runs lint and race-enabled tests, and exercises bounded encoder/decoder fuzz targets. A `go-coverage` artifact provides coverage diagnostics; there is no percentage gate. The same checks can be run locally:
 
 ```sh
 go test -race -coverprofile=/tmp/smallchop-coverage.out ./...
@@ -156,7 +185,7 @@ Use Docker with Compose v2.20+ (including `up --wait`), Git, and Python 3 for th
 ```sh
 git clone https://github.com/xdaybreakerx/SmallChop
 cd SmallChop
-cp .env.local.example .env.local
+cp deploy/env/local.env.example .env.local
 scripts/local.sh up
 scripts/local.sh smoke
 ```
@@ -175,16 +204,16 @@ scripts/local.sh up
 scripts/local.sh reset --delete-local-data  # Remove this local project's containers and data.
 ```
 
-The helper always selects `compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. If running projects simultaneously, also choose distinct `LOCAL_PROXY_SUBNET` ranges and matching `LOCAL_PROXY_IP`/`LOCAL_APP_PROXY_IP` addresses. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
+The helper always selects `deploy/compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. If running projects simultaneously, also choose distinct `LOCAL_PROXY_SUBNET` ranges and matching `LOCAL_PROXY_IP`/`LOCAL_APP_PROXY_IP` addresses. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
 
-The original `docker-compose.yml`, `Caddyfile`, and `.env.example` describe the production setup. CD is manual; image selection, test gating, rollback, and the existing MongoDB upgrade path still need to be verified before enabling automatic releases. Do not use the local reset command to migrate production storage.
+The production setup is in `deploy/docker-compose.yml`, `deploy/caddy/Caddyfile`, and `deploy/env/production.env.example`. CD is manual; image selection, test gating, rollback, and the existing MongoDB upgrade path still need to be verified before enabling automatic releases. Do not use the local reset command to migrate production storage.
 
 #### Request behavior and configuration
 
 - Creation accepts one `url` field in an `application/x-www-form-urlencoded` POST body. The destination must be an absolute HTTP(S) URL with a hostname and without embedded credentials. URLs are limited to 2,048 bytes; form bodies to 16 KiB. Invalid input returns 400; oversized form bodies return 413; unsupported methods return 405.
 - New destinations retain their path escaping, query encoding/order, and fragments. HTTP(S) localhost/private destinations are allowed; the application redirects browsers without fetching destinations. Validation does not assess destination reputation. Previously discarded fragments cannot be recovered from existing records.
 - Public codes represent positive signed 64-bit IDs using the existing alphabet. Empty, zero, noncanonical aliases (such as `bc` for `c`), invalid characters, and overflow return 400. Existing encoder-generated positive-ID codes retain their meaning; absent mappings return 404. Dependency failure classification and duplicate fallback are still pending reliability work.
-- `PUBLIC_BASE_URL` is a required HTTP(S) origin at startup, without credentials, query, fragment, or a path prefix. `.env.example` uses the placeholder `https://short.example`; choose an actual origin when restoring public hosting. Local Compose sets it from `LOCAL_HTTP_PORT`. Request Host/forwarded-host values do not determine generated links.
+- `PUBLIC_BASE_URL` is a required HTTP(S) origin at startup, without credentials, query, fragment, or a path prefix. `deploy/env/production.env.example` uses the placeholder `https://short.example`; choose an actual origin when restoring public hosting. Local Compose sets it from `LOCAL_HTTP_PORT`. Request Host/forwarded-host values do not determine generated links.
 - Defaults are 2 requests/second with burst 4 for creation and 10 requests/second with burst 20 for redirects, independently per client IP. Override with `CREATE_RATE_PER_SECOND`, `CREATE_RATE_BURST`, `REDIRECT_RATE_PER_SECOND`, and `REDIRECT_RATE_BURST`. These limits are policy choices, not capacity measurements. Limits are per app instance; clients behind the same NAT share an IP bucket. Exceeding a policy returns 429.
 - Caddy is the public entry point; the Go app has no published host port. A dedicated Compose proxy network assigns Caddy and the app distinct IPs, keeping MongoDB/Redis on the backend network. Compose sets `TRUSTED_PROXY_IPS` to Caddy's exact IP. Caddy overwrites `X-Forwarded-For` with its immediate client's address; the app accepts that single address only from a trusted peer. Other callers are identified by their connection IP. Missing/malformed forwarding from a trusted peer returns 400. Outside Compose, leave `TRUSTED_PROXY_IPS` empty for direct access or provide exact trusted proxy IPs, never broad private ranges.
 
@@ -197,7 +226,7 @@ Production defaults use `PROXY_SUBNET=172.30.81.0/29`, `PROXY_IP=172.30.81.2`, a
 -   Docker Network Subnet Overlaps:
     -   Choose an unused `LOCAL_PROXY_SUBNET` and matching distinct `LOCAL_PROXY_IP` and `LOCAL_APP_PROXY_IP` addresses in `.env.local`.
 -   Environment Variables Not Loaded:
-    -   Copy `.env.local.example` to `.env.local` and check the required credentials and database name. The helper does not use the production `.env`.
+    -   Copy `deploy/env/local.env.example` to `.env.local` and check the required credentials and database name. The helper does not use the production `.env`.
 -   MongoDB Authentication Fails After Changing Credentials:
     -   Existing storage keeps its original users. Restore the original local credentials, or explicitly delete disposable local data with `scripts/local.sh reset --delete-local-data` before starting again.
 -   Permission Issues:
