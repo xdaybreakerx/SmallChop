@@ -56,24 +56,42 @@ Production defaults use `PROXY_SUBNET=172.30.81.0/29`, `PROXY_IP=172.30.81.2`, a
 -   Permission Issues:
     -   If you encounter permission issues with volumes, adjust the permissions or run Docker with appropriate privileges.
 
+## Development checks and dependency baseline
+
+Use Go 1.27.1 and golangci-lint 2.14.0. CI reads the toolchain from `go.mod`; the Docker builder uses the same Go release and downloads locked modules without updating them. Run the following checks from the repository root:
+
+```sh
+golangci-lint run
+go vet ./...
+go test -race -coverprofile=/tmp/smallchop-coverage.out ./...
+go tool cover -func=/tmp/smallchop-coverage.out
+go test ./internal/utils -run '^$' -fuzz '^FuzzEncodeDecode$' -fuzztime=5s
+go test ./internal/utils -run '^$' -fuzz '^FuzzDecode$' -fuzztime=5s
+```
+
+The selected dependency baseline, recorded on 5 October 2026:
+
+- Go Redis client v9.22.0, MongoDB driver v2.9.1, miniredis v2.39.0, and `x/time` v0.16.0.
+- HTMX 4.0.0 and Tailwind browser 4.3.3; the existing HTMX error-response swap behavior is retained.
+- Redis 8.10.2, MongoDB 9.0.2, Caddy 2.11.6, and Alpine 3.24.2 for the application runtime.
+- GitHub Actions are pinned to release commits.
+
+MongoDB 9.0.2 was selected for fresh containers. This baseline does not migrate existing database volumes; changing server major versions requires a supported upgrade path.
+
+## Deployment configuration
+
+Production configuration lives under `deploy/`. Real `.env`, `.env.local`, and `.env.github-actions` files remain ignored at the repository root; copy examples from `deploy/env/` when configuring an environment. Local reference/review documents remain ignored.
+
+Compose paths are anchored to the repository root. The local helper selects them automatically. For a production configuration check, first configure root `.env`, then run from the repository root:
+
+```sh
+docker compose --project-directory . --env-file .env -f deploy/docker-compose.yml config --quiet
+```
+
+Use these explicit arguments for direct production Compose commands. Bare `docker compose` does not select the relocated configuration. `--project-directory .` preserves root-relative environment/build paths and the existing default project name; choose any intended override with another `-f` argument. See [Docker's Compose path and project-directory rules](https://docs.docker.com/reference/cli/docker/compose/).
+
+The CD workflow is manual (`workflow_dispatch`), so opening or merging a PR does not trigger deployment. Before using it, resolve same-commit test gating, explicit immutable image selection, environment replacement, health/smoke checks, rollback, and any required database upgrade. The current production app service declares `build: .`; the Docker Hub image pulled by the workflow is not explicitly selected by Compose. The workflow also appends to `.env` and stops the whole stack before starting it again.
+
 ## Submit a pull request
 
 If you'd like to contribute, please fork the repository and open a pull request to the `main` branch.
-
-## Todo
-
-<details>
-<summary>click here for the todo list</summary>
-
--   [x] HTMX + Go + Redis MVP
--   [x] pre commit hooks
--   [x] testing
--   [x] ci with github actions
--   [x] rate limiter
--   [x] persistent storage
--   [x] change Redis to caching layer
--   [x] cd with github actions
--   [x] deployment
--   [x] better shortener algo
-
-</details>
