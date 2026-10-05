@@ -167,7 +167,7 @@ scripts/local.sh reset --delete-local-data  # Remove this local project's contai
 
 The helper always selects `compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
 
-The original `docker-compose.yml`, `Caddyfile`, and `.env.example` describe the production setup. CD is manual; the image selection, test gate, rollback, and existing MongoDB upgrade path still need the work recorded in [Priority 5](docs/reviews/2026-10-05-resume-project-assessment.md). Do not use the local reset command to migrate production storage.
+The original `docker-compose.yml`, `Caddyfile`, and `.env.example` describe the production setup. CD is manual; image selection, test gating, rollback, and the existing MongoDB upgrade path still need to be verified before enabling automatic releases. Do not use the local reset command to migrate production storage.
 
 #### Troubleshooting
 

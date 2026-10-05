@@ -26,8 +26,10 @@ go.work.sum
 .env.github-actions
 .env.local
 
-# Duplicate historical diagram exports; retain editable sources in docs/raw.
-docs/raw/*.png
+# Keep published assets and API collections; other docs are local references.
+/docs/*
+!/docs/assets/
+!/docs/bruno/
 
 # Docker 
 docker-compose.override.yml
