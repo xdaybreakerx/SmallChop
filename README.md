@@ -8,15 +8,15 @@ For setup and troubleshooting, see the [contribution guide](CONTRIBUTING.md#runn
 
 ## Stack
 
-| Component | Role |
-| --- | --- |
-| Go | HTTP handlers, short-code encoding, and repository integration |
-| HTMX and Go templates | Form submission and server-rendered results |
-| MongoDB | Persistent URL mappings, sequential IDs, and access counts |
-| Redis | Cached redirect destinations with a one-hour TTL |
-| Caddy | Public ingress and production TLS; loopback HTTP locally |
-| Docker Compose | Single-host application and dependency deployment |
-| GitHub Actions | Formatting, lint, race tests, fuzz checks, and manual delivery workflow |
+| Component             | Role                                                                    |
+| --------------------- | ----------------------------------------------------------------------- |
+| Go                    | HTTP handlers, short-code encoding, and repository integration          |
+| HTMX and Go templates | Form submission and server-rendered results                             |
+| MongoDB               | Persistent URL mappings, sequential IDs, and access counts              |
+| Redis                 | Cached redirect destinations with a one-hour TTL                        |
+| Caddy                 | Public ingress and production TLS; loopback HTTP locally                |
+| Docker Compose        | Single-host application and dependency deployment                       |
+| GitHub Actions        | Formatting, lint, race tests, fuzz checks, and manual delivery workflow |
 
 Version details and development commands are in the [contribution guide](CONTRIBUTING.md#development-checks-and-dependency-baseline).
 
@@ -24,11 +24,11 @@ Version details and development commands are in the [contribution guide](CONTRIB
 
 Caddy is the only service with published host ports. A dedicated proxy network connects it to the Go application; MongoDB and Redis use the backend network. The app trusts forwarded client identity only from Caddy's configured IP.
 
-| Route | Behavior |
-| --- | --- |
-| `GET /` | Renders the shortening form |
+| Route           | Behavior                                                                                                             |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /`         | Renders the shortening form                                                                                          |
 | `POST /shorten` | Validates one destination, stores or reuses a MongoDB mapping, and returns a link using the configured public origin |
-| `GET /r/{code}` | Resolves a destination from Redis or MongoDB and returns a 308 redirect |
+| `GET /r/{code}` | Resolves a destination from Redis or MongoDB and returns a 308 redirect                                              |
 
 Redis caches destinations loaded from MongoDB. Every successful redirect also attempts a synchronous MongoDB access-count update, including cache hits.
 
@@ -38,7 +38,7 @@ The diagrams below provide an overview of the components and routes.
 
 ![Application routes](docs/assets/routes.png)
 
-The deployment configuration uses Docker Compose for a single host. Keeping one Go application alongside its database, cache, and reverse proxy makes the deployment proportionate to this project's scope.
+The deployment configuration uses Docker Compose for a single host.
 
 ## Verified behavior
 
@@ -80,6 +80,10 @@ CONTRIBUTING.md             Setup, configuration, checks, and contribution guida
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, configuration, troubleshooting, and pull request guidance.
+
+## Case study
+
+For the project’s design choices, trade-offs and development history, read [Keeping a URL shortener simple](https://junosalathe.com/writing/smallchop).
 
 ## References and further reading
 
