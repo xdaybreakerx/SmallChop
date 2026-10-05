@@ -32,8 +32,6 @@ jobs:
         steps:
             - name: Deploy to DigitalOcean Droplet
               uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
-              env:
-                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
               with:
                   host: ${{ secrets.DO_HOST }}
                   username: ${{ secrets.DO_SSH_USER }}
@@ -45,7 +43,7 @@ jobs:
                       git pull origin main
 
                       # Pull the latest Docker image
-                      docker pull $DOCKERHUB_USERNAME/gochop-it:latest
+                      docker pull ${{ secrets.DOCKERHUB_USERNAME }}/gochop-it:latest
 
                       # Create the .env file
                       touch .env

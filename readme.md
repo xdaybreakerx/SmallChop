@@ -5,7 +5,7 @@ SmallChop is a URL shortener built with Go, crafted for scalability and high per
 Designed as a lightweight, containerized application, SmallChop leverages Docker and a microservice-oriented architecture to deliver quick, reliable URL shortening and redirection.
 It features a caching layer with Redis for ultra-fast access to frequently requested URLs, persistent storage with MongoDB, and a reverse proxy with Caddy for secure, seamless HTTPS access.
 
-With a robust CI/CD pipeline for automated deployment, SmallChop is a production-ready solution that balances efficiency and scalability, making it ideal for handling high-traffic environments with ease.
+GitHub Actions runs formatting, linting, and tests on PRs. The deployment workflow currently requires manual dispatch while release controls and the database upgrade path are being verified.
 
 ## Tech Stack:
 
@@ -48,7 +48,7 @@ CD is manual (`workflow_dispatch`) so opening or merging a PR cannot restart pro
 -   go test:
     -   Used for running unit tests, ensuring that the application functions as expected and helping prevent regressions.
 -   GitHub Actions:
-    -   Powers CI/CD, building and pushing Docker images to Docker Hub and automating deployment to the production server.
+    -   Powers CI/CD, building and pushing Docker images to Docker Hub and providing a manually triggered deployment workflow.
 
 ## High Level Diagram
 
@@ -141,101 +141,42 @@ The CD pipeline consists of two primary jobs:
 ## 🤝 Contributing
 ### Running Locally
 
-#### Prerequisites
+Use Docker with Compose v2.20+ (including `up --wait`), Git, and Python 3 for the optional smoke check. Local startup uses a standalone Compose file, its own `.env.local`, and project-scoped MongoDB storage. Caddy serves HTTP on loopback; the application, Redis, and MongoDB have no published ports.
 
-Ensure you have the following installed on your system:
-
--   Docker (version 20.10 or higher)
--   Docker Compose (version 1.29 or higher)
--   Git
-
-#### Installation
-
-1. Clone the Repo
-
-```
+```sh
 git clone https://github.com/xdaybreakerx/SmallChop
-cd ./SmallChop
+cd SmallChop
+cp .env.local.example .env.local
+scripts/local.sh up
+scripts/local.sh smoke
 ```
 
-2. Set up environment variables
+Open http://127.0.0.1:8080. Change `LOCAL_HTTP_PORT` in `.env.local` if that port is occupied. The example contains disposable development credentials; leave production credentials in `.env`. MongoDB initialization uses `MONGO_DB_NAME` consistently with the application. Changing database names or credentials requires fresh local storage; it does not update an initialized database.
 
-    - Copy `.env.example` to `.env` and update the environment variables accordingly.
-    - Ensure that `.env` is **not** committed to version control.
+`scripts/local.sh up` builds the application and waits for authenticated MongoDB/Redis checks, the application page, and Caddy. These are startup checks; application dependency health and failure recovery are later work. The smoke command checks form delivery, URL creation, and exact cold/warm redirect destinations through Caddy. It does not establish browser JavaScript behavior, cache usage, or performance.
 
-3. Running the app locally
-
+```sh
+scripts/local.sh status
+scripts/local.sh logs
+scripts/local.sh stop  # Stop containers; keep containers and MongoDB data.
+scripts/local.sh up
+scripts/local.sh down  # Remove containers/network; keep MongoDB data.
+scripts/local.sh up
+scripts/local.sh reset --delete-local-data  # Remove this local project's containers and data.
 ```
-docker-compose up --build
-```
 
-4. Accessing the application
+The helper always selects `compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
 
-    - Web Application: http://localhost:${APP_PORT} (default is http://localhost:8080)
-    - Redis: Not exposed externally
-    - MongoDB: Not exposed externally
-
-5. Services overview
- <details>
- <summary>click here for summaries of each microservice.</summary>
-
-app Service
-
--   Build Context: The current directory (contains your application’s Dockerfile)
--   Ports: Exposes port 8080 (or as defined in .env)
--   Depends On: redis, mongo
--   Environment Variables: Loaded from .env
-
-redis Service
-
--   Image: redis:8.10.2-alpine
--   Command: Starts Redis with a password from .env
--   Environment Variables: Loaded from .env
--   Ports: Not exposed externally
-
-mongo Service
-
--   Image: mongo:9.0.2
--   Volumes:
-    -   mongo-data for persistent storage
--   mongo-user-init.js for initialization
--   Environment Variables: Loaded from .env
--   Ports: Not exposed externally
-
-caddy Service (Production Only)
-
--   Image: caddy:2.11.6-alpine
--   Ports:
-    -   Exposes port 80 for HTTP
-    -   Exposes port 443 for HTTPS
--   Volumes:
-    -   caddy_data for Caddy data
-    -   caddy_config for configuration
--   Caddyfile for server configuration
--   Environment Variables: Loaded from .env
-
-Additional Notes
-
--   Data Persistence: Volumes are used for MongoDB and Caddy to ensure data persists between container restarts.
--   Environment Variables: Keep the .env file secure, especially in production.
--   Docker Compose Override: The docker-compose.override.yml file is used to customize the Compose configuration for local development.
-
-    </details>
-
-6. Cleaning Up
-
-To stop and remove all containers, networks, and volumes created by Docker Compose:
-
-```
-docker-compose down -v
-```
+The original `docker-compose.yml`, `Caddyfile`, and `.env.example` describe the production setup. CD is manual; image selection, test gating, rollback, and the existing MongoDB upgrade path still need to be verified before enabling automatic releases. Do not use the local reset command to migrate production storage.
 
 #### Troubleshooting
 
 -   Ports Already in Use:
-    -   Ensure that the ports defined in docker-compose.yml and .env are not being used by other applications.
+    -   Change `LOCAL_HTTP_PORT` in `.env.local` and run `scripts/local.sh up` again.
 -   Environment Variables Not Loaded:
-    -   Double-check the .env file and ensure all necessary variables are defined.
+    -   Copy `.env.local.example` to `.env.local` and check the required credentials and database name. The helper does not use the production `.env`.
+-   MongoDB Authentication Fails After Changing Credentials:
+    -   Existing storage keeps its original users. Restore the original local credentials, or explicitly delete disposable local data with `scripts/local.sh reset --delete-local-data` before starting again.
 -   Permission Issues:
     -   If you encounter permission issues with volumes, adjust the permissions or run Docker with appropriate privileges.
 
@@ -264,5 +205,5 @@ If you'd like to contribute, please fork the repository and open a pull request 
 
 -   This project used the [tutorial from Annis Souames of Stream.io](https://getstream.io/blog/url-shortener/) for the basic HTMX + Go + Redis implementation. 
 -   This project referenced this [Stack Overflow discussion](https://stackoverflow.com/questions/742013/how-do-i-create-a-url-shortener) about Bijective Functions for implementing the more complex shortening algorithm.
--   If you're curious about Caddy vs Nginx, this [article by Tyler Langlois](<(https://blog.tjll.net/reverse-proxy-hot-dog-eating-contest-caddy-vs-nginx/)>) discusses performance considerations.
+-   If you're curious about Caddy vs Nginx, this [article by Tyler Langlois](https://blog.tjll.net/reverse-proxy-hot-dog-eating-contest-caddy-vs-nginx/) discusses performance considerations.
 -   This projects URL shortening short codes are derived from sequential integer IDs from MongoDB. As this increments, future short URLs can be predicted. In order to mitigate this, we could implement hashing or randomization however this is excessive for this projects scope. 

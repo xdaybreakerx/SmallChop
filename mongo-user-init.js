@@ -1,17 +1,18 @@
-db = db.getSiblingDB("url_shortener");
+const databaseName = process.env.MONGO_DB_NAME || "url_shortener";
+db = db.getSiblingDB(databaseName);
 
-// Create application user with readWrite and dbAdmin roles on the url_shortener database
+// Runs only on fresh storage; match the database used by the application.
 db.createUser({
     user: process.env.MONGO_APP_USERNAME,
     pwd: process.env.MONGO_APP_PASSWORD,
     roles: [
         {
             role: "readWrite",
-            db: "url_shortener",
+            db: databaseName,
         },
         {
             role: "dbAdmin",
-            db: "url_shortener",
+            db: databaseName,
         },
     ],
 });

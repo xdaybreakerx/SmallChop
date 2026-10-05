@@ -24,6 +24,12 @@ go.work.sum
 # env file
 .env
 .env.github-actions
+.env.local
+
+# Keep published assets and API collections; other docs are local references.
+/docs/*
+!/docs/assets/
+!/docs/bruno/
 
 # Docker 
 docker-compose.override.yml
