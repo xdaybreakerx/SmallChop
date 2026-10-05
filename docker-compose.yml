@@ -5,6 +5,9 @@ services:
     ports:
       - "80:80" # HTTP
       - "443:443" # HTTPS
+    networks:
+      proxy:
+        ipv4_address: ${PROXY_IP:-172.30.81.2}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
@@ -14,8 +17,12 @@ services:
 
   app:
     build: .
-    ports:
-      - "8080:8080"
+    environment:
+      TRUSTED_PROXY_IPS: ${PROXY_IP:-172.30.81.2}
+    networks:
+      proxy:
+        ipv4_address: ${APP_PROXY_IP:-172.30.81.3}
+      default: {}
     depends_on:
       - redis
       - mongo
@@ -40,3 +47,9 @@ volumes:
   mongo-data:
   caddy_data:
   caddy_config:
+
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:-172.30.81.0/29}

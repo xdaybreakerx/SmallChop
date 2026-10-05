@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -53,42 +55,47 @@ func Encode(num int64) string {
 
 // base 52 decode function
 func Decode(encoded string) int64 {
+	// Positive IDs have one spelling. The first alphabet character is zero.
+	if encoded == "" || encoded[0] == alphabet[0] {
+		return -1
+	}
 	var num int64
 	for _, char := range encoded {
 		index := strings.IndexRune(alphabet, char)
-		if index == -1 {
-			return -1 // Invalid character
+		if index == -1 || num > (math.MaxInt64-int64(index))/base {
+			return -1 // Invalid character or overflow.
 		}
 		num = num*base + int64(index)
 	}
 	return num
 }
 
-// basic URL sanitisation
+var ErrInvalidURL = errors.New("invalid destination URL")
+
+// SanitizeURL validates a destination without changing its URL semantics.
 func SanitizeURL(rawURL string) (string, error) {
 	if len(rawURL) > 2048 {
-		return "", errors.New("URL is too long")
+		return "", fmt.Errorf("%w: URL is too long", ErrInvalidURL)
 	}
 	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return "", errors.New("invalid URL format")
+	if err != nil || parsedURL.Hostname() == "" || parsedURL.User != nil || parsedURL.Opaque != "" ||
+		strings.ContainsAny(rawURL, "\r\n\t ") {
+		return "", fmt.Errorf("%w: expected an absolute URL without credentials or whitespace", ErrInvalidURL)
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return "", errors.New("URL must start with http or https")
+		return "", fmt.Errorf("%w: URL must use http or https", ErrInvalidURL)
 	}
-	decodedPath, err := url.PathUnescape(parsedURL.Path)
-	if err != nil {
-		return "", errors.New("error decoding URL path")
+	if port := parsedURL.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", fmt.Errorf("%w: invalid port", ErrInvalidURL)
+		}
 	}
-	decodedQuery, err := url.QueryUnescape(parsedURL.RawQuery)
-	if err != nil {
-		return "", errors.New("error decoding URL query")
+	if strings.HasSuffix(parsedURL.Host, ":") {
+		return "", fmt.Errorf("%w: empty port", ErrInvalidURL)
 	}
-	combined := decodedPath + decodedQuery
-	lowerCombined := strings.ToLower(combined)
-	if strings.Contains(lowerCombined, "javascript:") || strings.Contains(lowerCombined, "<script>") {
-		return "", errors.New("URL contains potentially malicious content")
+	if _, err := url.QueryUnescape(parsedURL.RawQuery); err != nil {
+		return "", fmt.Errorf("%w: malformed query escaping", ErrInvalidURL)
 	}
-	sanitizedURL := parsedURL.Scheme + "://" + parsedURL.Host + parsedURL.RequestURI()
-	return sanitizedURL, nil
+	return rawURL, nil
 }

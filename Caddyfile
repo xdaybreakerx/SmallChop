@@ -1,5 +1,8 @@
 {$DOMAIN_NAME} {
-    reverse_proxy app:8080
-    encode gzip
-    tls {$EMAIL}
-} 
+	reverse_proxy app:8080 {
+		# One ingress hop: overwrite caller-supplied forwarding chains.
+		header_up X-Forwarded-For {remote_host}
+	}
+	encode gzip
+	tls {$EMAIL}
+}

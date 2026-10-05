@@ -10,12 +10,17 @@ import (
 	"syscall"
 	"time"
 
+	"gochop-it/internal/config"
 	"gochop-it/internal/handlers"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/routes"
 )
 
 func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Invalid application configuration: %v", err)
+	}
 	ctx := context.Background()
 
 	// MongoDB setup
@@ -42,17 +47,18 @@ func main() {
 	fmt.Println("Connected to Redis!")
 
 	// Initialize Handlers
-	handlers, err := handlers.NewHandlers(mongoRepo, redisRepo)
+	handlers, err := handlers.NewHandlers(mongoRepo, redisRepo, cfg.PublicBaseURL)
 	if err != nil {
 		log.Fatalf("Failed to initialize handlers: %v", err)
 	}
 
 	// Register Routes
-	routes.RegisterRoutes(handlers)
+	mux := routes.NewMux(handlers, cfg)
 
 	// Server Setup
 	srv := &http.Server{
-		Addr: ":8080",
+		Addr:    ":8080",
+		Handler: mux,
 	}
 
 	go func() {

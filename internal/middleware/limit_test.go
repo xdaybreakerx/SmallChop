@@ -1,105 +1,144 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
+	"sync"
 	"testing"
+	"time"
+
+	"gochop-it/internal/config"
 )
 
-// Mock handler to wrap with the rate limiter
-func mockHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("OK")); err != nil {
-		log.Printf("Error writing response: %v", err)
-	}
+func newTestLimiter() (*clientLimiter, *time.Time) {
+	now := time.Unix(1000, 0)
+	l := PerClientRateLimiter(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }), config.RatePolicy{Rate: 2, Burst: 4}, []netip.Addr{netip.MustParseAddr("172.30.80.2")}).(*clientLimiter)
+	l.now = func() time.Time { return now }
+	return l, &now
 }
 
-// Test if the rate limiter allows requests within the limit
-func TestRateLimiter_AllowsRequests(t *testing.T) {
-	// Wrap the mock handler with the rate limiter
-	limiter := PerClientRateLimiter(mockHandler)
-
-	// Create a test HTTP server
+func request(l http.Handler, peer string, headers ...string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "192.168.1.1:1234"
+	req.RemoteAddr = peer
+	for _, header := range headers {
+		req.Header.Add("X-Forwarded-For", header)
+	}
 	w := httptest.NewRecorder()
+	l.ServeHTTP(w, req)
+	return w
+}
 
-	// Perform a request within the rate limit
-	for i := 0; i < 2; i++ {
-		limiter.ServeHTTP(w, req)
-		if w.Result().StatusCode != http.StatusOK {
-			t.Errorf("Expected status OK, got %v", w.Result().StatusCode)
+func TestLimiterBurstAndRefill(t *testing.T) {
+	l, now := newTestLimiter()
+	for i := 0; i < 4; i++ {
+		if got := request(l, "192.0.2.1:1000").Code; got != 204 {
+			t.Fatalf("request %d = %d", i+1, got)
+		}
+	}
+	w := request(l, "192.0.2.1:1001")
+	if w.Code != 429 || w.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("limit response: %v", w)
+	}
+	*now = now.Add(500 * time.Millisecond)
+	if got := request(l, "192.0.2.1:1000").Code; got != 204 {
+		t.Fatalf("refill = %d", got)
+	}
+	if got := request(l, "192.0.2.1:1000").Code; got != 429 {
+		t.Fatalf("spent token = %d", got)
+	}
+}
+
+func TestTrustedProxyClientSeparation(t *testing.T) {
+	l, _ := newTestLimiter()
+	for i := 0; i < 4; i++ {
+		if got := request(l, "172.30.80.2:1000", "192.0.2.1").Code; got != 204 {
+			t.Fatalf("request %d = %d", i, got)
+		}
+	}
+	if got := request(l, "172.30.80.2:1000", "192.0.2.1").Code; got != 429 {
+		t.Fatalf("client one = %d", got)
+	}
+	if got := request(l, "172.30.80.2:1000", "192.0.2.2").Code; got != 204 {
+		t.Fatalf("client two = %d", got)
+	}
+}
+
+func TestUntrustedHeadersCannotBypass(t *testing.T) {
+	l, _ := newTestLimiter()
+	for i := 0; i < 4; i++ {
+		request(l, "192.0.2.1:1000", "198.51.100.1")
+	}
+	if got := request(l, "192.0.2.1:1000", "198.51.100.2").Code; got != 429 {
+		t.Fatalf("spoof bypass = %d", got)
+	}
+	if got := request(l, "192.0.2.2:1000", "198.51.100.1").Code; got != 204 {
+		t.Fatalf("distinct direct peer = %d", got)
+	}
+}
+
+func TestClientIdentityValidation(t *testing.T) {
+	cases := []struct {
+		peer    string
+		headers []string
+		want    string
+	}{
+		{"[::1]:8080", nil, "::1"}, {"[::ffff:192.0.2.1]:8080", nil, "192.0.2.1"},
+		{"172.30.80.2:8080", []string{"2001:db8::1"}, "2001:db8::1"},
+		{"172.30.80.2:8080", []string{"::ffff:192.0.2.1"}, "192.0.2.1"},
+		{"172.30.80.2:8080", nil, ""}, {"172.30.80.2:8080", []string{"bad"}, ""},
+		{"172.30.80.2:8080", []string{"192.0.2.1, 192.0.2.2"}, ""},
+		{"172.30.80.2:8080", []string{"192.0.2.1", "192.0.2.2"}, ""},
+		{"172.30.80.2:8080", []string{"fe80::1%eth0"}, ""}, {"bad-peer", nil, ""},
+	}
+	for _, tc := range cases {
+		l, _ := newTestLimiter()
+		w := request(l, tc.peer, tc.headers...)
+		if tc.want == "" {
+			if w.Code != 400 {
+				t.Errorf("%s %v = %d; want 400", tc.peer, tc.headers, w.Code)
+			}
+		} else if w.Code != 204 || l.clients[netip.MustParseAddr(tc.want)] == nil {
+			t.Errorf("%s %v was not identified as %s", tc.peer, tc.headers, tc.want)
 		}
 	}
 }
 
-// Test if the rate limiter rejects requests when the limit is exceeded
-func TestRateLimiter_RejectsExcessiveRequests(t *testing.T) {
-	// Wrap the mock handler with the rate limiter
-	limiter := PerClientRateLimiter(mockHandler)
-
-	// Create a test HTTP server
-	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "192.168.1.1:1234"
-	w := httptest.NewRecorder()
-
-	// First, make allowed requests
-	for i := 0; i < 12; i++ {
-		limiter.ServeHTTP(w, req)
-		if w.Result().StatusCode != http.StatusOK {
-			t.Errorf("Expected status OK, got %v", w.Result().StatusCode)
-		}
+func TestLimiterIdleCleanup(t *testing.T) {
+	l, now := newTestLimiter()
+	request(l, "192.0.2.1:1000")
+	*now = now.Add(4 * time.Minute)
+	request(l, "192.0.2.2:1000")
+	if len(l.clients) != 1 {
+		t.Fatalf("idle buckets retained: %d", len(l.clients))
 	}
-
-	// Exceed the rate limit
-	for i := 0; i < 10; i++ {
-		w = httptest.NewRecorder() // Reset the response recorder
-		limiter.ServeHTTP(w, req)
-		if w.Result().StatusCode != http.StatusTooManyRequests {
-			t.Errorf("Expected status TooManyRequests, got %v", w.Result().StatusCode)
-		}
+	l.policy = config.RatePolicy{Rate: 0.001, Burst: 4}
+	request(l, "192.0.2.3:1000")
+	*now = now.Add(4 * time.Minute)
+	request(l, "192.0.2.4:1000")
+	if l.clients[netip.MustParseAddr("192.0.2.3")] == nil {
+		t.Fatal("partially refilled bucket was reset")
 	}
 }
 
-// Test if the rate limiter is enforced on a per-client basis
-func TestRateLimiter_PerClientEnforcement(t *testing.T) {
-	// Wrap the mock handler with the rate limiter
-	limiter := PerClientRateLimiter(mockHandler)
-
-	// Create two different test clients
-	reqClient1 := httptest.NewRequest("GET", "/", nil)
-	reqClient1.RemoteAddr = "192.168.1.1:1234" // Client 1 IP
-	reqClient2 := httptest.NewRequest("GET", "/", nil)
-	reqClient2.RemoteAddr = "192.168.1.2:5678" // Client 2 IP
-
-	// Client 1 makes requests
-	w1 := httptest.NewRecorder()
-	limiter.ServeHTTP(w1, reqClient1)
-	if w1.Result().StatusCode != http.StatusOK {
-		t.Errorf("Expected status OK for Client 1, got %v", w1.Result().StatusCode)
+func TestLimiterConcurrentRequests(t *testing.T) {
+	l, _ := newTestLimiter()
+	var wg sync.WaitGroup
+	codes := make(chan int, 32)
+	for i := 0; i < 32; i++ {
+		wg.Go(func() { codes <- request(l, "192.0.2.1:1000").Code })
 	}
-
-	// Client 2 makes requests
-	w2 := httptest.NewRecorder()
-	limiter.ServeHTTP(w2, reqClient2)
-	if w2.Result().StatusCode != http.StatusOK {
-		t.Errorf("Expected status OK for Client 2, got %v", w2.Result().StatusCode)
+	wg.Wait()
+	close(codes)
+	allowed := 0
+	for code := range codes {
+		if code == 204 {
+			allowed++
+		} else if code != 429 {
+			t.Fatalf("unexpected code: %d", code)
+		}
 	}
-
-	// Client 1 exceeds the rate limit
-	for i := 0; i < 10; i++ {
-		w1 = httptest.NewRecorder()
-		limiter.ServeHTTP(w1, reqClient1)
-	}
-	if w1.Result().StatusCode != http.StatusTooManyRequests {
-		t.Errorf("Expected status TooManyRequests for Client 1, got %v", w1.Result().StatusCode)
-	}
-
-	// Client 2 should still be OK
-	w2 = httptest.NewRecorder()
-	limiter.ServeHTTP(w2, reqClient2)
-	if w2.Result().StatusCode != http.StatusOK {
-		t.Errorf("Expected status OK for Client 2, got %v", w2.Result().StatusCode)
+	if allowed != 4 {
+		t.Fatalf("concurrent burst allowed %d; want 4", allowed)
 	}
 }
