@@ -4,7 +4,7 @@ SmallChop is a containerized Go URL shortener with an HTMX interface, MongoDB pe
 
 The project demonstrates HTTP request handling, cache-aside reads, proxy trust configuration, and repeatable local development. Tests and local integration checks cover the behavior described below.
 
-For setup and troubleshooting, see the [contribution guide](contribution.md#running-locally).
+For setup and troubleshooting, see the [contribution guide](CONTRIBUTING.md#running-locally).
 
 ## Stack
 
@@ -18,7 +18,7 @@ For setup and troubleshooting, see the [contribution guide](contribution.md#runn
 | Docker Compose | Single-host application and dependency deployment |
 | GitHub Actions | Formatting, lint, race tests, fuzz checks, and manual delivery workflow |
 
-Version details and development commands are in the [contribution guide](contribution.md#development-checks-and-dependency-baseline).
+Version details and development commands are in the [contribution guide](CONTRIBUTING.md#development-checks-and-dependency-baseline).
 
 ## Architecture and request flow
 
@@ -47,7 +47,7 @@ The deployment configuration uses Docker Compose for a single host. Keeping one 
 - Creation and redirects have separate configurable limits. Middleware tests and an isolated Caddy integration check verified independent client allowances and resistance to forged forwarding headers from untrusted peers.
 - Fresh local Compose startup, create/redirect smoke checks through Caddy, and persistence across a retained-volume restart were verified in disposable projects. Local startup checks cover authenticated dependencies and HTTP availability.
 
-See the [request contract and configuration](contribution.md#request-behavior-and-configuration) for exact limits and status behavior, and the [local smoke commands](contribution.md#running-locally) to reproduce the basic flow.
+See the [request contract and configuration](CONTRIBUTING.md#request-behavior-and-configuration) for exact limits and status behavior, and the [local smoke commands](CONTRIBUTING.md#running-locally) to reproduce the basic flow.
 
 ## CI and delivery
 
@@ -55,7 +55,7 @@ See the [request contract and configuration](contribution.md#request-behavior-an
 
 [CD](.github/workflows/go-cd.yml) requires manual dispatch. It builds and publishes a Docker Hub image, then connects to the configured host, pulls `main` and the image, appends environment configuration, and restarts the Compose stack.
 
-See the [deployment configuration](contribution.md#deployment-configuration) for environment setup and Compose commands.
+See the [deployment configuration](CONTRIBUTING.md#deployment-configuration) for environment setup and Compose commands.
 
 ## Repository layout
 
@@ -74,12 +74,12 @@ docs/bruno/                 API request collection
 .github/workflows/          CI and manual CD
 .husky/hooks/               Local commit checks
 Dockerfile                  Application image build
-contribution.md             Setup, configuration, checks, and contribution guidance
+CONTRIBUTING.md             Setup, configuration, checks, and contribution guidance
 ```
 
 ## Contributing
 
-See [contribution.md](contribution.md) for local setup, configuration, troubleshooting, and pull request guidance.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, configuration, troubleshooting, and pull request guidance.
 
 ## References and further reading
 
