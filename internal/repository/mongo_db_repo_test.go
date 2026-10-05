@@ -60,11 +60,16 @@ func cursorResponse(documents ...bson.D) bson.D {
 func TestSaveURL(t *testing.T) {
 	destination := "https://example.com/a%2Fb?q=a%2Bb&x=2&x=1#installation"
 	var lookedUp, inserted string
+	var writes int
+	var hasAccessCount bool
 	monitor := &event.CommandMonitor{Started: func(_ context.Context, e *event.CommandStartedEvent) {
 		switch e.CommandName {
 		case "find":
 			lookedUp = e.Command.Lookup("filter").Document().Lookup("longURL").StringValue()
 		case "insert":
+			writes++
+			_, accessErr := e.Command.Lookup("documents").Array().Index(0).Document().LookupErr("accessCount")
+			hasAccessCount = accessErr == nil
 			inserted = e.Command.Lookup("documents").Array().Index(0).Document().Lookup("longURL").StringValue()
 		}
 	}}
@@ -72,7 +77,7 @@ func TestSaveURL(t *testing.T) {
 		cursorResponse(),
 		bson.D{{Key: "ok", Value: 1}, {Key: "n", Value: 1}},
 	)
-	repo.GetNextIDFunc = func(string) (int64, error) { return 12345, nil }
+	repo.GetNextIDFunc = func(context.Context, string) (int64, error) { return 12345, nil }
 
 	shortCode, err := repo.SaveURL(context.Background(), destination)
 	if err != nil {
@@ -80,6 +85,9 @@ func TestSaveURL(t *testing.T) {
 	}
 	if expected := utils.Encode(12345); shortCode != expected {
 		t.Errorf("Expected short code %s, got %s", expected, shortCode)
+	}
+	if writes != 1 || hasAccessCount {
+		t.Fatalf("writes %d, retired count persisted %v", writes, hasAccessCount)
 	}
 	if lookedUp != destination || inserted != destination {
 		t.Fatalf("destination changed: lookup %q, stored %q", lookedUp, inserted)
@@ -128,13 +136,72 @@ func TestFindURLByLongURL(t *testing.T) {
 	}
 }
 
-func TestIncrementAccessCount(t *testing.T) {
-	repo := newMockMongoRepo(t, bson.D{
-		{Key: "ok", Value: 1},
-		{Key: "n", Value: 1},
-		{Key: "nModified", Value: 1},
-	})
-	if err := repo.IncrementAccessCount(context.Background(), 12345); err != nil {
-		t.Fatalf("Failed to increment access count: %v", err)
+func TestMongoErrorContracts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response bson.D
+		want     error
+	}{
+		{"absent", cursorResponse(), ErrNotFound},
+		{"server unavailable", bson.D{{Key: "ok", Value: 0}, {Key: "code", Value: 91}, {Key: "errmsg", Value: "shutdown"}}, ErrUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMockMongoRepo(t, tc.response)
+			_, err := repo.FindURLByID(context.Background(), 1)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error %v; want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestSaveURLPassesCancellationToIDAllocation(t *testing.T) {
+	repo := newMockMongoRepo(t, cursorResponse())
+	ctx, cancel := context.WithCancel(context.Background())
+	called := false
+	repo.GetNextIDFunc = func(received context.Context, name string) (int64, error) {
+		called = true
+		if received != ctx || name != "url_counter" {
+			t.Fatal("ID allocation lost request context")
+		}
+		cancel()
+		return 0, received.Err()
+	}
+	_, err := repo.SaveURL(ctx, "https://example.com/")
+	if !called || !errors.Is(err, context.Canceled) {
+		t.Fatalf("called %v, error %v", called, err)
+	}
+}
+
+func TestGetNextIDHonorsCancellation(t *testing.T) {
+	repo := newMockMongoRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := repo.GetNextID(ctx, "url_counter")
+	if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestStoredDocumentErrorsAreInternal(t *testing.T) {
+	repo := newMockMongoRepo(t, cursorResponse(bson.D{{Key: "_id", Value: "not an integer"}}))
+	_, err := repo.FindURLByID(context.Background(), 1)
+	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrUnavailable) {
+		t.Fatalf("decode error classification: %v", err)
+	}
+}
+
+func TestSaveURLServerFailure(t *testing.T) {
+	repo := newMockMongoRepo(t, bson.D{{Key: "ok", Value: 0}, {Key: "code", Value: 91}, {Key: "errmsg", Value: "shutdown"}})
+	if _, err := repo.SaveURL(context.Background(), "https://example.com/"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("save error %v", err)
+	}
+}
+
+func TestPermanentServerErrorIsInternal(t *testing.T) {
+	repo := newMockMongoRepo(t, bson.D{{Key: "ok", Value: 0}, {Key: "code", Value: 2}, {Key: "errmsg", Value: "bad command"}})
+	_, err := repo.FindURLByID(context.Background(), 1)
+	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrNotFound) {
+		t.Fatalf("permanent error classification: %v", err)
 	}
 }

@@ -16,7 +16,7 @@ scripts/local.sh smoke
 
 Open http://127.0.0.1:8080. Change `LOCAL_HTTP_PORT` in `.env.local` if that port is occupied. The example contains disposable development credentials; leave production credentials in `.env`. MongoDB initialization uses `MONGO_DB_NAME` consistently with the application. Changing database names or credentials requires fresh local storage; it does not update an initialized database.
 
-`scripts/local.sh up` builds the application and waits for authenticated MongoDB/Redis checks, the application page, and Caddy. These are startup checks; application dependency health and failure recovery are later work. The smoke command checks form delivery, URL creation, and exact cold/warm redirect destinations through Caddy. It does not establish browser JavaScript behavior, cache usage, or performance.
+`scripts/local.sh up` builds the application and waits for authenticated dependency checks, the application page, and Caddy. The application requires MongoDB at startup and uses Redis as an optional cache. Compose starts the app without waiting for Redis to be healthy; the helper's all-services `--wait` still reports an unhealthy Redis service. The smoke command checks form delivery, URL creation, and exact cold/warm redirect destinations through Caddy. It does not establish browser JavaScript behavior, cache usage, or performance.
 
 ```sh
 scripts/local.sh status
@@ -36,12 +36,28 @@ The production setup is in `deploy/docker-compose.yml`, `deploy/caddy/Caddyfile`
 
 - Creation accepts one `url` field in an `application/x-www-form-urlencoded` POST body. The destination must be an absolute HTTP(S) URL with a hostname and without embedded credentials. URLs are limited to 2,048 bytes; form bodies to 16 KiB. Invalid input returns 400; oversized form bodies return 413; unsupported methods return 405.
 - New destinations retain their path escaping, query encoding/order, and fragments. HTTP(S) localhost/private destinations are allowed; the application redirects browsers without fetching destinations. Validation does not assess destination reputation. Previously discarded fragments cannot be recovered from existing records.
-- Public codes represent positive signed 64-bit IDs using the existing alphabet. Empty, zero, noncanonical aliases (such as `bc` for `c`), invalid characters, and overflow return 400. Existing encoder-generated positive-ID codes retain their meaning; absent mappings return 404. Dependency failure classification and duplicate fallback are still pending reliability work.
+- Public codes represent positive signed 64-bit IDs using the existing alphabet. Empty, zero, noncanonical aliases (such as `bc` for `c`), invalid characters, and overflow return 400. Existing encoder-generated positive-ID codes retain their meaning; absent mappings return 404. A redirect uses at most one MongoDB lookup. Unavailable required storage returns 503; unexpected internal errors return 500. Cache read errors fall back to MongoDB and cache fill errors do not discard a retrieved destination. Warm-cache redirects make no MongoDB call.
 - `PUBLIC_BASE_URL` is a required HTTP(S) origin at startup, without credentials, query, fragment, or a path prefix. `deploy/env/production.env.example` uses the placeholder `https://short.example`; choose an actual origin when restoring public hosting. Local Compose sets it from `LOCAL_HTTP_PORT`. Request Host/forwarded-host values do not determine generated links.
 - Defaults are 2 requests/second with burst 4 for creation and 10 requests/second with burst 20 for redirects, independently per client IP. Override with `CREATE_RATE_PER_SECOND`, `CREATE_RATE_BURST`, `REDIRECT_RATE_PER_SECOND`, and `REDIRECT_RATE_BURST`. These limits are policy choices, not capacity measurements. Limits are per app instance; clients behind the same NAT share an IP bucket. Exceeding a policy returns 429.
 - Caddy is the public entry point; the Go app has no published host port. A dedicated Compose proxy network assigns Caddy and the app distinct IPs, keeping MongoDB/Redis on the backend network. Compose sets `TRUSTED_PROXY_IPS` to Caddy's exact IP. Caddy overwrites `X-Forwarded-For` with its immediate client's address; the app accepts that single address only from a trusted peer. Other callers are identified by their connection IP. Missing/malformed forwarding from a trusted peer returns 400. Outside Compose, leave `TRUSTED_PROXY_IPS` empty for direct access or provide exact trusted proxy IPs, never broad private ranges.
 
 Production defaults use `PROXY_SUBNET=172.30.81.0/29`, `PROXY_IP=172.30.81.2`, and `APP_PROXY_IP=172.30.81.3`; local defaults use the corresponding `LOCAL_*` values under `172.30.80.0/29`. Change the subnet and both addresses together if they overlap an existing Docker/VPN network. Trust applies to this single-ingress topology; a CDN or extra proxy requires an explicit policy change. The network/address configuration follows [Docker's static-IP requirements](https://docs.docker.com/reference/compose-file/services/#ipv4_address), and the header policy uses [Caddy's upstream header controls](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers).
+
+### Dependency budgets and failure checks
+
+`REQUEST_TIMEOUT` bounds the dependency work for a request (default `3s`). `MONGO_TIMEOUT` bounds a MongoDB operation or the complete creation sequence (`2s`), `CACHE_TIMEOUT` bounds each cache read/fill (`150ms`), and `STARTUP_TIMEOUT` bounds the required MongoDB startup probe (`10s`). Values must be positive Go durations of at most `1m`; earlier incoming deadlines take precedence. Cache startup probing uses the cache budget. Redis dial/socket/pool timeouts are bounded and command retries are disabled so an optional cache does not consume the database fallback budget.
+
+The HTTP server also limits header reads to 5s, request reads to 10s, response writes to 15s plus `REQUEST_TIMEOUT`, and idle connections to 60s. Dependency budgets begin after method/input validation. A timed-out/cancelled create may have reached the database before cancellation; a 503 does not prove no write occurred. Retrying the same destination uses the existing lookup behavior; concurrent-create uniqueness is a separate contract.
+
+Per-link access-count updates are retired. Existing `accessCount` values are retained but no longer updated; new mappings omit the field. Redirects do not require a counter write, and no background analytics worker is used.
+
+To exercise dependency failures with Docker Compose **2.24.4+** and Python 3:
+
+```sh
+python3 scripts/check-dependencies.py
+```
+
+The check uses [Compose attribute replacement](https://docs.docker.com/reference/compose-file/merge/#replace-value) to replace environment-file references with its temporary file. This creates a fresh `smallchop-local-dependency-check` project with disposable example credentials, temporary environment files, loopback ingress, and its own Mongo volume. It refuses existing containers/storage under that name and removes only the newly created test project's resources afterward. It uses `172.30.82.0/29`; choose a non-overlapping range in the script if that conflicts with another Docker/VPN network. It checks Redis failure/fallback and recovery, optional-cache startup, cached redirects with MongoDB stopped, bounded 503 responses, required-Mongo startup, and unchanged legacy counts. It does not use your root environment files.
 
 ### Troubleshooting
 

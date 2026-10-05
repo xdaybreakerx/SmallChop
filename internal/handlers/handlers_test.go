@@ -10,43 +10,45 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/v2/mongo"
+	"gochop-it/internal/config"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
 )
 
 type fakeStore struct {
-	destination          string
-	saveErr              error
-	findErr              error
-	countErr             error
-	saved                string
-	saves, finds, counts int
-	foundID, countedID   int64
+	destination  string
+	saveErr      error
+	findErr      error
+	saved        string
+	saves, finds int
+	foundID      int64
+	saveFunc     func(context.Context) error
+	findFunc     func(context.Context) error
 }
 
-func (s *fakeStore) SaveURL(_ context.Context, destination string) (string, error) {
+func (s *fakeStore) SaveURL(ctx context.Context, destination string) (string, error) {
 	s.saves++
 	s.saved = destination
+	if s.saveFunc != nil {
+		return "", s.saveFunc(ctx)
+	}
 	return utils.Encode(12345), s.saveErr
 }
-func (s *fakeStore) FindURLByID(_ context.Context, id int64) (*repository.URL, error) {
+func (s *fakeStore) FindURLByID(ctx context.Context, id int64) (*repository.URL, error) {
 	s.finds++
 	s.foundID = id
+	if s.findFunc != nil {
+		return nil, s.findFunc(ctx)
+	}
 	if s.findErr != nil {
 		return nil, s.findErr
 	}
 	return &repository.URL{ID: id, LongURL: s.destination}, nil
 }
-func (s *fakeStore) IncrementAccessCount(_ context.Context, id int64) error {
-	s.counts++
-	s.countedID = id
-	return s.countErr
-}
-
 func testHandlers(t *testing.T, store *fakeStore) (*Handlers, *miniredis.Miniredis) {
 	t.Helper()
 	server := miniredis.RunT(t)
@@ -60,7 +62,7 @@ func testHandlers(t *testing.T, store *fakeStore) (*Handlers, *miniredis.Minired
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Handlers{MongoRepo: store, RedisRepo: &repository.RedisRepo{Client: client}, Template: tmpl, PublicBaseURL: "https://short.example"}, server
+	return &Handlers{Timeouts: config.DefaultTimeouts(), MongoRepo: store, RedisRepo: &repository.RedisRepo{Client: client}, Template: tmpl, PublicBaseURL: "https://short.example"}, server
 }
 
 func formRequest(body string) *http.Request {
@@ -97,12 +99,12 @@ func TestNewHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	h, err := NewHandlers(&fakeStore{}, nil, "https://short.example")
+	h, err := NewHandlers(&fakeStore{}, nil, "https://short.example", config.DefaultTimeouts())
 	if err != nil || h == nil || h.Template == nil {
 		t.Fatalf("constructor: %v", err)
 	}
 	t.Chdir(t.TempDir())
-	if _, err := NewHandlers(&fakeStore{}, nil, "https://short.example"); err == nil {
+	if _, err := NewHandlers(&fakeStore{}, nil, "https://short.example", config.DefaultTimeouts()); err == nil {
 		t.Fatal("missing template accepted")
 	}
 }
@@ -176,8 +178,8 @@ func TestShortenStorageErrors(t *testing.T) {
 	for _, tc := range []struct {
 		err    error
 		status int
-	}{{utils.ErrInvalidURL, 400}, {errors.New("storage failed"), 500}} {
-		h := &Handlers{MongoRepo: &fakeStore{saveErr: tc.err}}
+	}{{utils.ErrInvalidURL, 400}, {errors.New("storage failed"), 500}, {repository.ErrUnavailable, 503}, {context.DeadlineExceeded, 503}} {
+		h := &Handlers{Timeouts: config.DefaultTimeouts(), MongoRepo: &fakeStore{saveErr: tc.err}}
 		w := httptest.NewRecorder()
 		h.ShortenURLHandler(w, formRequest("url=https%3A%2F%2Fexample.com"))
 		if w.Code != tc.status {
@@ -198,7 +200,7 @@ func TestRedirectHandlerColdAndWarm(t *testing.T) {
 			t.Fatalf("redirect %d: %d %q", i, w.Code, w.Header().Get("Location"))
 		}
 	}
-	if store.finds != 1 || store.counts != 2 || store.foundID != 12345 || store.countedID != 12345 {
+	if store.finds != 1 || store.foundID != 12345 {
 		t.Fatalf("unexpected storage calls: %+v", store)
 	}
 	cached, err := cache.Get(code)
@@ -223,21 +225,168 @@ func TestRedirectValidation(t *testing.T) {
 	}
 }
 
-func TestRedirectAbsentMapping(t *testing.T) {
-	h, _ := testHandlers(t, &fakeStore{findErr: mongo.ErrNoDocuments})
-	w := httptest.NewRecorder()
-	h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
-	if w.Code != 404 {
-		t.Fatalf("absent mapping = %d", w.Code)
+func TestRedirectStorageErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"absent", repository.ErrNotFound, 404},
+		{"unavailable", repository.ErrUnavailable, 503},
+		{"internal", errors.New("bad stored document"), 500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeStore{findErr: tc.err}
+			h, _ := testHandlers(t, store)
+			w := httptest.NewRecorder()
+			h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+			if w.Code != tc.status || store.finds != 1 {
+				t.Fatalf("status %d, database lookups %d; want %d, 1", w.Code, store.finds, tc.status)
+			}
+		})
 	}
-	// Duplicate fallback and dependency outage classification are Priority 2.
 }
 
-func TestCounterFailureDoesNotPreventRedirect(t *testing.T) {
-	h, _ := testHandlers(t, &fakeStore{destination: "https://example.com", countErr: errors.New("counter failed")})
+type fakeCache struct {
+	get        func(context.Context) (string, error)
+	set        func(context.Context) error
+	gets, sets int
+}
+
+func (c *fakeCache) GetLongURL(ctx context.Context, _ string) (string, error) {
+	c.gets++
+	return c.get(ctx)
+}
+func (c *fakeCache) SetKey(ctx context.Context, _, _ string, _ time.Duration) error {
+	c.sets++
+	return c.set(ctx)
+}
+
+func TestRedirectCacheFailures(t *testing.T) {
+	target := "https://example.com/a%2Fb?q=a%2Bb#fragment"
+	for _, tc := range []struct {
+		name             string
+		readErr, fillErr error
+	}{
+		{"cache read unavailable", errors.New("cache offline"), nil},
+		{"cache fill rejected", redis.Nil, errors.New("READONLY")},
+		{"cache offline", errors.New("cache offline"), errors.New("cache offline")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeStore{destination: target}
+			h, _ := testHandlers(t, store)
+			cache := &fakeCache{
+				get: func(context.Context) (string, error) { return "", tc.readErr },
+				set: func(context.Context) error { return tc.fillErr },
+			}
+			h.RedisRepo = cache
+			w := httptest.NewRecorder()
+			h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+			if w.Code != 308 || w.Header().Get("Location") != target || store.finds != 1 || cache.sets != 1 {
+				t.Fatalf("status %d, location %q, finds %d, fills %d", w.Code, w.Header().Get("Location"), store.finds, cache.sets)
+			}
+		})
+	}
+}
+
+func TestWarmRedirectDoesNotUseMongo(t *testing.T) {
+	store := &fakeStore{findErr: repository.ErrUnavailable}
+	h, cache := testHandlers(t, store)
+	target := "https://example.com/#cached"
+	if err := cache.Set("c", target); err != nil {
+		t.Fatal(err)
+	}
 	w := httptest.NewRecorder()
 	h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
-	if w.Code != 308 {
-		t.Fatalf("counter failure prevented redirect: %d", w.Code)
+	if w.Code != 308 || w.Header().Get("Location") != target || store.finds != 0 || store.saves != 0 {
+		t.Fatalf("warm redirect: status %d, finds %d, saves %d", w.Code, store.finds, store.saves)
+	}
+}
+
+func waitForDeadline(ctx context.Context) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestDependencyBudgets(t *testing.T) {
+	for _, path := range []string{"creation", "database lookup", "cache read", "cache fill"} {
+		t.Run(path, func(t *testing.T) {
+			store := &fakeStore{destination: "https://example.com/"}
+			h, _ := testHandlers(t, store)
+			h.Timeouts = config.Timeouts{Request: time.Second, Mongo: 20 * time.Millisecond, Cache: 20 * time.Millisecond}
+			cache := &fakeCache{
+				get: func(context.Context) (string, error) { return "", redis.Nil },
+				set: func(context.Context) error { return nil },
+			}
+			h.RedisRepo = cache
+			status := 308
+			switch path {
+			case "creation":
+				store.saveFunc = waitForDeadline
+				status = 503
+			case "database lookup":
+				store.findFunc = waitForDeadline
+				status = 503
+			case "cache read":
+				cache.get = func(ctx context.Context) (string, error) { return "", waitForDeadline(ctx) }
+			case "cache fill":
+				cache.set = waitForDeadline
+			}
+			start := time.Now()
+			w := httptest.NewRecorder()
+			if path == "creation" {
+				h.ShortenURLHandler(w, formRequest("url=https%3A%2F%2Fexample.com"))
+			} else {
+				h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+			}
+			if w.Code != status || time.Since(start) > 500*time.Millisecond {
+				t.Fatalf("status %d, elapsed %s", w.Code, time.Since(start))
+			}
+		})
+	}
+}
+
+func TestIncomingCancellationStopsFallback(t *testing.T) {
+	store := &fakeStore{}
+	h, _ := testHandlers(t, store)
+	ctx, cancel := context.WithCancel(context.Background())
+	h.RedisRepo = &fakeCache{
+		get: func(context.Context) (string, error) { cancel(); return "", context.Canceled },
+	}
+	w := httptest.NewRecorder()
+	h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil).WithContext(ctx))
+	if store.finds != 0 || w.Code != 503 {
+		t.Fatalf("finds %d, status %d", store.finds, w.Code)
+	}
+}
+
+func TestIncomingDeadlineOverridesMongoBudget(t *testing.T) {
+	for _, creation := range []bool{false, true} {
+		store := &fakeStore{saveFunc: waitForDeadline, findFunc: waitForDeadline}
+		h, _ := testHandlers(t, store)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+		w := httptest.NewRecorder()
+		start := time.Now()
+		if creation {
+			h.ShortenURLHandler(w, formRequest("url=https%3A%2F%2Fexample.com").WithContext(ctx))
+		} else {
+			h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil).WithContext(ctx))
+		}
+		if w.Code != 503 || time.Since(start) > 500*time.Millisecond {
+			t.Fatalf("status %d, elapsed %s", w.Code, time.Since(start))
+		}
+	}
+}
+
+func TestOverallRequestBudgetStopsFallback(t *testing.T) {
+	store := &fakeStore{}
+	h, _ := testHandlers(t, store)
+	h.Timeouts.Request = 20 * time.Millisecond
+	h.RedisRepo = &fakeCache{get: func(ctx context.Context) (string, error) { return "", waitForDeadline(ctx) }}
+	w := httptest.NewRecorder()
+	h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+	if w.Code != 503 || store.finds != 0 {
+		t.Fatalf("status %d, finds %d", w.Code, store.finds)
 	}
 }

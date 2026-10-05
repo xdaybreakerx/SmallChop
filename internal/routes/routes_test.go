@@ -21,7 +21,6 @@ func (routeStore) SaveURL(context.Context, string) (string, error) { return "c",
 func (routeStore) FindURLByID(context.Context, int64) (*repository.URL, error) {
 	return &repository.URL{ID: 1, LongURL: "https://example.com"}, nil
 }
-func (routeStore) IncrementAccessCount(context.Context, int64) error { return nil }
 
 func TestRoutesPoliciesAndProxyIdentity(t *testing.T) {
 	cache := miniredis.RunT(t)
@@ -32,7 +31,7 @@ func TestRoutesPoliciesAndProxyIdentity(t *testing.T) {
 		}
 	})
 	h := &handlers.Handlers{
-		MongoRepo: routeStore{}, RedisRepo: &repository.RedisRepo{Client: client}, PublicBaseURL: "https://short.example",
+		Timeouts: config.DefaultTimeouts(), MongoRepo: routeStore{}, RedisRepo: &repository.RedisRepo{Client: client}, PublicBaseURL: "https://short.example",
 		Template: template.Must(template.New("index").Parse("<form></form>")),
 	}
 	// Very slow refill makes burst assertions independent of scheduler timing.

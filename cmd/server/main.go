@@ -21,33 +21,36 @@ func main() {
 	if err != nil {
 		log.Fatalf("Invalid application configuration: %v", err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeouts.Startup)
 
 	// MongoDB setup
 	mongoRepo, err := repository.NewMongoRepo(ctx)
+	cancel()
 	if err != nil {
 		log.Fatalf("Could not connect to MongoDB: %v", err)
 	}
 	fmt.Println("Connected to MongoDB!")
 
-	// Ensure MongoDB connection is valid
-	err = mongoRepo.Client.Ping(ctx, nil)
-	if err != nil {
-		log.Fatalf("MongoDB ping failed: %v", err)
+	// Redis is optional; keep the client so later requests can recover automatically.
+	redisRepo := repository.NewRedisRepo(cfg.Timeouts.Cache)
+	cacheCtx, cacheCancel := context.WithTimeout(context.Background(), cfg.Timeouts.Cache)
+	if err := redisRepo.Ping(cacheCtx); err != nil {
+		log.Println("Redis unavailable at startup; using MongoDB fallback")
 	}
-	fmt.Println("MongoDB connection is active!")
-
-	// Redis setup
-	redisRepo := repository.NewRedisRepo()
-
-	// Ensure Redis connection is valid
-	if e := redisRepo.Ping(ctx); e != nil {
-		log.Fatalf("Could not connect to Redis: %v", e)
-	}
-	fmt.Println("Connected to Redis!")
+	cacheCancel()
+	defer func() {
+		if err := redisRepo.Client.Close(); err != nil {
+			log.Printf("Redis close failed: %v", err)
+		}
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		if err := mongoRepo.Client.Disconnect(closeCtx); err != nil {
+			log.Printf("MongoDB close failed: %v", err)
+		}
+	}()
 
 	// Initialize Handlers
-	handlers, err := handlers.NewHandlers(mongoRepo, redisRepo, cfg.PublicBaseURL)
+	handlers, err := handlers.NewHandlers(mongoRepo, redisRepo, cfg.PublicBaseURL, cfg.Timeouts)
 	if err != nil {
 		log.Fatalf("Failed to initialize handlers: %v", err)
 	}
@@ -57,8 +60,12 @@ func main() {
 
 	// Server Setup
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: mux,
+		Addr:              ":8080",
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15*time.Second + cfg.Timeouts.Request,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {

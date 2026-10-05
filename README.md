@@ -12,7 +12,7 @@ For setup and troubleshooting, see the [contribution guide](CONTRIBUTING.md#runn
 | --- | --- |
 | Go | HTTP handlers, short-code encoding, and repository integration |
 | HTMX and Go templates | Form submission and server-rendered results |
-| MongoDB | Persistent URL mappings, sequential IDs, and access counts |
+| MongoDB | Persistent URL mappings and sequential IDs |
 | Redis | Cached redirect destinations with a one-hour TTL |
 | Caddy | Public ingress and production TLS; loopback HTTP locally |
 | Docker Compose | Single-host application and dependency deployment |
@@ -30,7 +30,7 @@ Caddy is the only service with published host ports. A dedicated proxy network c
 | `POST /shorten` | Validates one destination, stores or reuses a MongoDB mapping, and returns a link using the configured public origin |
 | `GET /r/{code}` | Resolves a destination from Redis or MongoDB and returns a 308 redirect |
 
-Redis caches destinations loaded from MongoDB. Every successful redirect also attempts a synchronous MongoDB access-count update, including cache hits.
+Redis caches destinations loaded from MongoDB. Cache hits return the destination directly; cache misses or cache errors use one MongoDB lookup and a best-effort cache fill. Missing mappings return 404, and unavailable storage returns 503.
 
 The diagrams below provide an overview of the components and routes.
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -17,7 +18,19 @@ type RatePolicy struct {
 	Burst int
 }
 
+type Timeouts struct {
+	Request time.Duration
+	Mongo   time.Duration
+	Cache   time.Duration
+	Startup time.Duration
+}
+
+func DefaultTimeouts() Timeouts {
+	return Timeouts{Request: 3 * time.Second, Mongo: 2 * time.Second, Cache: 150 * time.Millisecond, Startup: 10 * time.Second}
+}
+
 type Config struct {
+	Timeouts       Timeouts
 	PublicBaseURL  string
 	TrustedProxies []netip.Addr
 	CreatePolicy   RatePolicy
@@ -59,7 +72,26 @@ func load(getenv func(string) string) (Config, error) {
 		return cfg, err
 	}
 	cfg.RedirectPolicy, err = policy(getenv, "REDIRECT", 10, 20)
-	return cfg, err
+	if err != nil {
+		return cfg, err
+	}
+	cfg.Timeouts = DefaultTimeouts()
+	for _, setting := range []struct {
+		key   string
+		value *time.Duration
+	}{
+		{"REQUEST_TIMEOUT", &cfg.Timeouts.Request}, {"MONGO_TIMEOUT", &cfg.Timeouts.Mongo},
+		{"CACHE_TIMEOUT", &cfg.Timeouts.Cache}, {"STARTUP_TIMEOUT", &cfg.Timeouts.Startup},
+	} {
+		if raw := getenv(setting.key); raw != "" {
+			duration, err := time.ParseDuration(raw)
+			if err != nil || duration <= 0 || duration > time.Minute {
+				return cfg, fmt.Errorf("%s must be a positive Go duration of at most 1m", setting.key)
+			}
+			*setting.value = duration
+		}
+	}
+	return cfg, nil
 }
 
 func policy(getenv func(string) string, prefix string, defaultRate float64, defaultBurst int) (RatePolicy, error) {
