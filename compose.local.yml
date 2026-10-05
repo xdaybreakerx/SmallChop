@@ -5,6 +5,9 @@ services:
     image: caddy:2.11.6-alpine
     ports:
       - "127.0.0.1:${LOCAL_HTTP_PORT:-8080}:8080"
+    networks:
+      proxy:
+        ipv4_address: ${LOCAL_PROXY_IP:-172.30.80.2}
     volumes:
       - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
     depends_on:
@@ -19,6 +22,13 @@ services:
   app:
     build: .
     env_file: .env.local
+    environment:
+      PUBLIC_BASE_URL: http://127.0.0.1:${LOCAL_HTTP_PORT:-8080}
+      TRUSTED_PROXY_IPS: ${LOCAL_PROXY_IP:-172.30.80.2}
+    networks:
+      proxy:
+        ipv4_address: ${LOCAL_APP_PROXY_IP:-172.30.80.3}
+      default: {}
     depends_on:
       redis:
         condition: service_healthy
@@ -60,3 +70,9 @@ services:
 
 volumes:
   mongo-data:
+
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${LOCAL_PROXY_SUBNET:-172.30.80.0/29}

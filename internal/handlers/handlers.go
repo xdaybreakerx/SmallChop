@@ -1,43 +1,61 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
 )
 
-type Handlers struct {
-	MongoRepo    *repository.MongoRepo
-	RedisRepo    *repository.RedisRepo
-	Template     *template.Template
-	TemplatePath string
+type URLStore interface {
+	repository.URLRepository
+	SaveURL(ctx context.Context, longURL string) (string, error)
 }
 
-func NewHandlers(mongoRepo *repository.MongoRepo, redisRepo *repository.RedisRepo) (*Handlers, error) {
+type Handlers struct {
+	MongoRepo     URLStore
+	RedisRepo     *repository.RedisRepo
+	Template      *template.Template
+	TemplatePath  string
+	PublicBaseURL string
+}
+
+func NewHandlers(mongoRepo URLStore, redisRepo *repository.RedisRepo, publicBaseURL string) (*Handlers, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("could not get working directory: %v", err)
 	}
 	templatePath := filepath.Join(cwd, "internal", "templates", "index.html")
-	tmpl := template.Must(template.ParseFiles(templatePath))
+	tmpl, err := template.ParseFiles(templatePath)
+	if err != nil {
+		return nil, fmt.Errorf("parse index template: %w", err)
+	}
 
 	return &Handlers{
-		MongoRepo:    mongoRepo,
-		RedisRepo:    redisRepo,
-		Template:     tmpl,
-		TemplatePath: templatePath,
+		MongoRepo:     mongoRepo,
+		RedisRepo:     redisRepo,
+		Template:      tmpl,
+		TemplatePath:  templatePath,
+		PublicBaseURL: publicBaseURL,
 	}, nil
 }
 
 func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
@@ -51,21 +69,45 @@ func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 
-	url := r.FormValue("url")
-	fmt.Println("Payload: ", url)
-
-	shortCode, err := h.MongoRepo.SaveURL(ctx, url)
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "Request body is too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "Invalid form", http.StatusBadRequest)
+		}
+		return
+	}
+	values := r.PostForm["url"]
+	if len(values) != 1 {
+		http.Error(w, "Provide one destination URL in the form body", http.StatusBadRequest)
+		return
+	}
+	destination, err := utils.SanitizeURL(values[0])
 	if err != nil {
+		http.Error(w, "Invalid destination URL", http.StatusBadRequest)
+		return
+	}
+
+	shortCode, err := h.MongoRepo.SaveURL(ctx, destination)
+	if err != nil {
+		if errors.Is(err, utils.ErrInvalidURL) {
+			http.Error(w, "Invalid destination URL", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Failed to save URL", http.StatusInternalServerError)
 		return
 	}
 
-	fullShortURL := fmt.Sprintf("http://smallchop.net/r/%s", shortCode)
-	if _, err := fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, shortCode, fullShortURL); err != nil {
+	fullShortURL := h.PublicBaseURL + "/r/" + shortCode
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, template.HTMLEscapeString(shortCode), template.HTMLEscapeString(fullShortURL)); err != nil {
 		log.Printf("Error writing shortened URL response: %v", err)
 	}
 }
@@ -73,12 +115,13 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
 	}
 
-	key := r.URL.Path[len("/r/"):]
-	if key == "" {
+	key, found := strings.CutPrefix(r.URL.Path, "/r/")
+	if !found || key == "" {
 		http.Error(w, "Invalid URL", http.StatusBadRequest)
 		return
 	}

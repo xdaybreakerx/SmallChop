@@ -7,6 +7,8 @@ It features a caching layer with Redis for ultra-fast access to frequently reque
 
 GitHub Actions runs formatting, linting, and tests on PRs. The deployment workflow currently requires manual dispatch while release controls and the database upgrade path are being verified.
 
+The previous public domain and hosting have expired. The current application is verified locally; restoring a public deployment is separate follow-up work.
+
 ## Tech Stack:
 
 ### Core Technologies
@@ -60,7 +62,7 @@ The architecture diagram below illustrates SmallChop’s core components, showin
 
 In an enterprise environment, SmallChop would typically be deployed with Kubernetes to enable high scalability and manageability. By using Kubernetes, the application could run across multiple pods and nodes, allowing for automatic scaling in response to traffic spikes. This setup would also enable seamless updates and rollbacks through Kubernetes’ built-in deployment strategies, such as rolling updates. Additionally, a load balancer would be essential to distribute incoming traffic evenly across instances, ensuring high availability and minimizing latency. This would also allow easy integration of a more robust secret manager than what is currently implemented in this project.
 
-However, for a project of this scale and purpose, using Kubernetes and a load balancer would be overkill. Instead, SmallChop is deployed using Docker Compose on a single DigitalOcean Droplet, which provides a streamlined, cost-effective environment suitable for demonstration and portfolio purposes. This approach keeps infrastructure simple while showcasing containerized microservices architecture. It maintains the essential components—caching, persistent storage, and reverse proxy—while remaining accessible and manageable for a smaller deployment. This setup can later be adapted to a more advanced Kubernetes environment if needed, making SmallChop flexible and adaptable for future growth.
+For a project of this scale and purpose, the deployment design uses Docker Compose on a single DigitalOcean Droplet. The previous hosting has expired; the standalone local Compose setup is the current runnable demonstration. One Go application with a cache, database, and reverse proxy keeps the infrastructure proportionate to the project.
 
 </details>
 
@@ -129,7 +131,15 @@ Husky pre-commit hooks ensure that basic formatting, linting, and tests are enfo
 
 #### **CI Pipeline**
 
-Ensures that code quality is maintained consistently across different environments and that no one bypasses quality checks.
+Checks formatting without accepting changes to Go sources, runs lint and race-enabled tests, and exercises bounded encoder/decoder fuzz targets. A `go-coverage` artifact provides coverage diagnostics; there is no percentage gate. The same checks can be run locally:
+
+```sh
+go test -race -coverprofile=/tmp/smallchop-coverage.out ./...
+go tool cover -func=/tmp/smallchop-coverage.out
+go vet ./...
+go test ./internal/utils -run '^$' -fuzz '^FuzzEncodeDecode$' -fuzztime=5s
+go test ./internal/utils -run '^$' -fuzz '^FuzzDecode$' -fuzztime=5s
+```
 
 #### **CD Pipeline**
 
@@ -165,14 +175,27 @@ scripts/local.sh up
 scripts/local.sh reset --delete-local-data  # Remove this local project's containers and data.
 ```
 
-The helper always selects `compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
+The helper always selects `compose.local.yml`, `.env.local`, and the `smallchop-local` project, ignoring any automatic production override. To run an independent experiment, prefix every command with `LOCAL_PROJECT=smallchop-local-my-test` and choose a free `LOCAL_HTTP_PORT` in `.env.local`. If running projects simultaneously, also choose distinct `LOCAL_PROXY_SUBNET` ranges and matching `LOCAL_PROXY_IP`/`LOCAL_APP_PROXY_IP` addresses. Reset is restricted to project names starting with `smallchop-local`; it does not delete production volumes. Project separation follows [Docker's Compose project-name behavior](https://docs.docker.com/compose/how-tos/project-name/).
 
 The original `docker-compose.yml`, `Caddyfile`, and `.env.example` describe the production setup. CD is manual; image selection, test gating, rollback, and the existing MongoDB upgrade path still need to be verified before enabling automatic releases. Do not use the local reset command to migrate production storage.
+
+#### Request behavior and configuration
+
+- Creation accepts one `url` field in an `application/x-www-form-urlencoded` POST body. The destination must be an absolute HTTP(S) URL with a hostname and without embedded credentials. URLs are limited to 2,048 bytes; form bodies to 16 KiB. Invalid input returns 400; oversized form bodies return 413; unsupported methods return 405.
+- New destinations retain their path escaping, query encoding/order, and fragments. HTTP(S) localhost/private destinations are allowed; the application redirects browsers without fetching destinations. Validation does not assess destination reputation. Previously discarded fragments cannot be recovered from existing records.
+- Public codes represent positive signed 64-bit IDs using the existing alphabet. Empty, zero, noncanonical aliases (such as `bc` for `c`), invalid characters, and overflow return 400. Existing encoder-generated positive-ID codes retain their meaning; absent mappings return 404. Dependency failure classification and duplicate fallback are still pending reliability work.
+- `PUBLIC_BASE_URL` is a required HTTP(S) origin at startup, without credentials, query, fragment, or a path prefix. `.env.example` uses the placeholder `https://short.example`; choose an actual origin when restoring public hosting. Local Compose sets it from `LOCAL_HTTP_PORT`. Request Host/forwarded-host values do not determine generated links.
+- Defaults are 2 requests/second with burst 4 for creation and 10 requests/second with burst 20 for redirects, independently per client IP. Override with `CREATE_RATE_PER_SECOND`, `CREATE_RATE_BURST`, `REDIRECT_RATE_PER_SECOND`, and `REDIRECT_RATE_BURST`. These limits are policy choices, not capacity measurements. Limits are per app instance; clients behind the same NAT share an IP bucket. Exceeding a policy returns 429.
+- Caddy is the public entry point; the Go app has no published host port. A dedicated Compose proxy network assigns Caddy and the app distinct IPs, keeping MongoDB/Redis on the backend network. Compose sets `TRUSTED_PROXY_IPS` to Caddy's exact IP. Caddy overwrites `X-Forwarded-For` with its immediate client's address; the app accepts that single address only from a trusted peer. Other callers are identified by their connection IP. Missing/malformed forwarding from a trusted peer returns 400. Outside Compose, leave `TRUSTED_PROXY_IPS` empty for direct access or provide exact trusted proxy IPs, never broad private ranges.
+
+Production defaults use `PROXY_SUBNET=172.30.81.0/29`, `PROXY_IP=172.30.81.2`, and `APP_PROXY_IP=172.30.81.3`; local defaults use the corresponding `LOCAL_*` values under `172.30.80.0/29`. Change the subnet and both addresses together if they overlap an existing Docker/VPN network. Trust applies to this single-ingress topology; a CDN or extra proxy requires an explicit policy change. The network/address configuration follows [Docker's static-IP requirements](https://docs.docker.com/reference/compose-file/services/#ipv4_address), and the header policy uses [Caddy's upstream header controls](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers).
 
 #### Troubleshooting
 
 -   Ports Already in Use:
     -   Change `LOCAL_HTTP_PORT` in `.env.local` and run `scripts/local.sh up` again.
+-   Docker Network Subnet Overlaps:
+    -   Choose an unused `LOCAL_PROXY_SUBNET` and matching distinct `LOCAL_PROXY_IP` and `LOCAL_APP_PROXY_IP` addresses in `.env.local`.
 -   Environment Variables Not Loaded:
     -   Copy `.env.local.example` to `.env.local` and check the required credentials and database name. The helper does not use the production `.env`.
 -   MongoDB Authentication Fails After Changing Credentials:
