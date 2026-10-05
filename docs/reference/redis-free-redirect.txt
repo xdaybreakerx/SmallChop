@@ -1,0 +1,41 @@
+Historical, inactive benchmark sketch preserved from local WIP on 5 October 2026.
+It also skips the access-count write, so it is not an equivalent cache comparison.
+Use a repeatable benchmark with matching semantics before making performance claims.
+
+// same as above but without redis for performance testing
+// func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
+// 	ctx := r.Context()
+// 	if r.Method != http.MethodGet {
+// 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+// 		return
+// 	}
+
+// 	key := r.URL.Path[len("/r/"):]
+// 	if key == "" {
+// 		http.Error(w, "Invalid URL", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Decode the short code to get the integer ID
+// 	id := utils.Decode(key)
+// 	if id == -1 {
+// 		http.Error(w, "Invalid short URL", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Directly fetch from MongoDB, bypassing Redis
+// 	urlDoc, err := h.MongoRepo.FindURLByID(ctx, id)
+// 	if err != nil {
+// 		http.Error(w, "Shortened URL not found", http.StatusNotFound)
+// 		return
+// 	}
+// 	longURL := urlDoc.LongURL
+
+// 	// Optionally skip the increment logic for testing
+// 	// err = h.MongoRepo.IncrementAccessCount(ctx, id)
+// 	// if err != nil {
+// 	//     log.Printf("Failed to increment access count: %v", err)
+// 	// }
+
+// 	http.Redirect(w, r, longURL, http.StatusPermanentRedirect)
+// }

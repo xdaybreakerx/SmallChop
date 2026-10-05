@@ -24,6 +24,10 @@ go.work.sum
 # env file
 .env
 .env.github-actions
+.env.local
+
+# Duplicate historical diagram exports; retain editable sources in docs/raw.
+docs/raw/*.png
 
 # Docker 
 docker-compose.override.yml

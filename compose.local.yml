@@ -1,0 +1,62 @@
+# Standalone file: do not merge with the production docker-compose.yml.
+name: smallchop-local
+services:
+  caddy:
+    image: caddy:2.11.6-alpine
+    ports:
+      - "127.0.0.1:${LOCAL_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  app:
+    build: .
+    env_file: .env.local
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:8.10.2-alpine
+    env_file: .env.local
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q '^PONG$'"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mongo:
+    image: mongo:9.0.2
+    env_file: .env.local
+    volumes:
+      - mongo-data:/data/db
+      - ./mongo-user-init.js:/docker-entrypoint-initdb.d/mongo-user-init.js:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host mongo --username "$$MONGO_APP_USERNAME"
+          --password "$$MONGO_APP_PASSWORD" --authenticationDatabase "$$MONGO_DB_NAME"
+          "$$MONGO_DB_NAME" --eval 'if (!db.runCommand({ping: 1}).ok) quit(1)'
+      interval: 2s
+      timeout: 5s
+      start_period: 10s
+      retries: 30
+
+volumes:
+  mongo-data:
