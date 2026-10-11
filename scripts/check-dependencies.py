@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise P2 in a fresh, self-cleaning Compose project (Compose 2.24.4+)."""
+"""Exercise reliability and observability in a fresh, self-cleaning Compose project (Compose 2.24.4+)."""
+import fcntl
 import json
 from pathlib import Path
 import re
@@ -24,8 +25,9 @@ def run(args, **kwargs):
     return subprocess.run(args, cwd=ROOT, check=True, text=True, capture_output=True, **kwargs).stdout.strip()
 
 
-def main():
+def check_dependencies():
     observations = []
+    metric_checks = []
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -62,6 +64,7 @@ def main():
         def request(path, status, destination=None, form=None):
             data = urllib.parse.urlencode({"url": form}).encode() if form else None
             req = urllib.request.Request(base + path, data=data)
+            req.add_header("X-Request-ID", "caller-private-id")
             start = time.monotonic()
             try:
                 response = opener.open(req, timeout=5)
@@ -70,12 +73,14 @@ def main():
             with response:
                 body = response.read().decode()
                 actual, location = response.code, response.headers.get("Location")
+                request_id = response.headers.get("X-Request-ID")
             elapsed = time.monotonic() - start
+            assert re.fullmatch(r"[0-9a-f]{32}", request_id or ""), f"{path}: missing server request ID"
             assert actual == status, f"{path}: status {actual}, expected {status}"
             if destination is not None:
                 assert location == destination, f"{path}: changed destination {location!r}"
             assert elapsed < 3.5, f"{path}: exceeded dependency budget ({elapsed:.3f}s)"
-            observations.append({"path": path, "status": actual, "seconds": round(elapsed, 3)})
+            observations.append({"path": path, "status": actual, "seconds": round(elapsed, 3), "request_id": request_id})
             return body
 
         def wait_http():
@@ -103,35 +108,124 @@ def main():
                            'const appdb = db.getSiblingDB(process.env.MONGO_DB_NAME); '
                            'appdb.auth(process.env.MONGO_APP_USERNAME, process.env.MONGO_APP_PASSWORD); ' + js)
 
+        def metrics():
+            text = compose("exec", "-T", "app", "wget", "-q", "-O", "-",
+                           "http://127.0.0.1:9090/metrics")
+            samples = {}
+            for line in text.splitlines():
+                match = re.fullmatch(r'([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*?)\})? ([^ ]+)(?: .*)?', line)
+                if not match:
+                    continue
+                labels = tuple(sorted(re.findall(r'([a-z_]+)="([^"]*)"', match[2] or "")))
+                samples[(match[1], labels)] = float(match[3])
+            return samples
+
+        def value(samples, name, **labels):
+            return samples.get(("smallchop_" + name, tuple(sorted(labels.items()))), 0)
+
+        def check_delta(before, after, name, count, **labels):
+            delta = value(after, name, **labels) - value(before, name, **labels)
+            assert delta == count, f"{name} {labels}: delta {delta}, expected {count}"
+            metric_checks.append({"metric": name, "labels": labels, "delta": delta})
+
+        def check_safe_logs():
+            output = compose("logs", "--no-log-prefix", "app")
+            logs = []
+            for line in output.splitlines():
+                if line.startswith("{"):
+                    logs.append(json.loads(line))
+            completed = {row["request_id"]: row for row in logs if row.get("msg") == "http request completed"}
+            for observation in observations:
+                row = completed.get(observation["request_id"])
+                assert row and row["status"] == observation["status"], "missing/mismatched correlated request log"
+                assert row["duration_seconds"] >= 0
+                assert row["route"] in {"/", "/shorten", "/r/{code}", "/livez", "/readyz", "unmatched"}
+            assert not any(secret in output for secret in ["log-privacy-secret", "cache-offline#fragment", "a%2Fb", "caller-private-id"])
+            return len(completed)
+
+        result = {"result": "INCOMPLETE", "project": PROJECT}
         try:
             compose("up", "--build", "-d", "--wait", "--wait-timeout", "120")
-            first = "https://example.com/a%2Fb?q=a%2Bb&x=2&x=1#installation"
+            request("/livez", 200)
+            request("/readyz", 200)
+            request("/metrics", 404)  # Metrics are not routed through Caddy.
+            first = "https://example.com/a%2Fb?q=a%2Bb&x=2&x=1&token=log-privacy-secret#installation"
             code = create(first)
             mongo('appdb.urls.updateOne({_id:1}, {$set:{accessCount:7}})')
+            before = metrics()
             request("/r/" + code, 308, first)  # Cold read and fill.
+            cold = metrics()
+            check_delta(before, cold, "cache_reads_total", 1, outcome="miss")
+            check_delta(before, cold, "cache_fills_total", 1, outcome="success")
+            check_delta(before, cold, "dependency_failures_total", 0, dependency="redis", operation="get")
             request("/r/" + code, 308, first)  # Warm read.
+            warm = metrics()
+            check_delta(cold, warm, "cache_reads_total", 1, outcome="hit")
+            check_delta(before, warm, "http_requests_total", 2, route="/r/{code}", method="GET", status_class="3xx")
+            check_delta(before, warm, "http_request_duration_seconds_count", 2, route="/r/{code}", method="GET", status_class="3xx")
+            assert value(warm, "http_request_duration_seconds_sum", route="/r/{code}", method="GET", status_class="3xx") >= 0
             assert redis("GET", code) == first
             assert mongo('print(appdb.urls.findOne({_id:2}))') == "null"
             assert mongo('print(appdb.urls.findOne({_id:1}).accessCount)') == "7"
             request("/r/999999", 404)
 
+            before_absent = metrics()
+            request("/r/999999", 404)
+            after_absent = metrics()
+            check_delta(before_absent, after_absent, "dependency_failures_total", 0, dependency="mongo", operation="find")
+            check_delta(before_absent, after_absent, "cache_reads_total", 1, outcome="miss")
+
             compose("stop", "redis")
+            request("/livez", 200)
+            request("/readyz", 200)  # Redis is optional.
             second = "https://example.org/cache-offline#fragment"
             second_code = create(second)
             assert mongo('print("accessCount" in appdb.urls.findOne({_id:2}))') == "false"
+            offline = metrics()
             request("/r/" + second_code, 308, second)
+            fallback = metrics()
+            check_delta(offline, fallback, "cache_reads_total", 1, outcome="error")
+            check_delta(offline, fallback, "cache_fills_total", 1, outcome="error")
+            check_delta(offline, fallback, "dependency_failures_total", 1, dependency="redis", operation="get")
+            check_delta(offline, fallback, "dependency_failures_total", 1, dependency="redis", operation="set")
+            log_count = check_safe_logs()
+            initial_observations = list(observations)
             compose("up", "--no-deps", "--force-recreate", "-d", "app")
             wait_http()  # The app starts while Redis remains stopped.
+            observations.clear()  # The recreated process has a new log/counter lifetime.
+            app_before = compose("ps", "-q", "app")
+            process_before = json.loads(run(["docker", "inspect", "--format", "{{json .State}}", app_before]))
+            request("/readyz", 200)
             request("/r/" + second_code, 308, second)
 
             compose("up", "--no-deps", "-d", "--wait", "redis")
+            recovery_before = metrics()
             request("/r/" + second_code, 308, second)
-            assert redis("GET", second_code) == second  # Caching resumes on the same app process.
+            recovered = metrics()
+            check_delta(recovery_before, recovered, "cache_reads_total", 1, outcome="miss")
+            check_delta(recovery_before, recovered, "cache_fills_total", 1, outcome="success")
+            request("/r/" + second_code, 308, second)
+            check_delta(recovered, metrics(), "cache_reads_total", 1, outcome="hit")
+            assert redis("GET", second_code) == second
+            app_after = compose("ps", "-q", "app")
+            process_after = json.loads(run(["docker", "inspect", "--format", "{{json .State}}", app_after]))
+            assert app_before == app_after and process_before["StartedAt"] == process_after["StartedAt"] and process_before["Pid"] == process_after["Pid"], "app restarted during cache recovery"
             redis("DEL", code)
             compose("stop", "mongo")
+            before_mongo = metrics()
+            request("/livez", 200)
+            request("/readyz", 503)
+            check_delta(before_mongo, metrics(), "dependency_failures_total", 1, dependency="mongo", operation="ping")
             request("/r/" + second_code, 308, second)  # Cached path needs no MongoDB.
             request("/r/" + code, 503)  # Required cold read is unavailable, not absent.
             request("/shorten", 503, form="https://example.net/mongo-offline")
+            mongo_failed = metrics()
+            check_delta(before_mongo, mongo_failed, "dependency_failures_total", 1, dependency="mongo", operation="find")
+            check_delta(before_mongo, mongo_failed, "dependency_failures_total", 1, dependency="mongo", operation="save")
+            check_delta(before_mongo, mongo_failed, "http_requests_total", 1, route="/readyz", method="GET", status_class="5xx")
+            log_count += check_safe_logs()
+            # Keep both process lifetimes' observations, not just the final restart.
+            recovery_observations = list(observations)
 
             compose("up", "--no-deps", "--force-recreate", "-d", "app")
             app = compose("ps", "-aq", "app")
@@ -147,13 +241,39 @@ def main():
             compose("up", "--no-deps", "-d", "--wait", "mongo")
             compose("up", "--no-deps", "--force-recreate", "-d", "app")
             wait_http()
+            observations.clear()
+            request("/livez", 200)
+            request("/readyz", 200)
             request("/r/" + code, 308, first)
             assert mongo('print(appdb.urls.findOne({_id:1}).accessCount)') == "7"
-            print(json.dumps({"result": "PASS", "project": PROJECT, "requests": observations,
+            log_count += check_safe_logs()
+            result = {"result": "PASS", "project": PROJECT, "requests": initial_observations + recovery_observations + observations,
+                              "metric_checks": metric_checks, "correlated_logs": log_count,
+                              "health_dependency_contract": True, "private_metrics_listener": True,
                               "optional_redis_startup": True, "required_mongo_startup_bounded": True,
-                              "cache_recovery_without_app_restart": True, "legacy_count_unchanged": True}, indent=2))
+                              "cache_recovery_without_app_restart": True, "legacy_count_unchanged": True}
+        except Exception as error:
+            result.update(result="FAIL", error=str(error), requests=observations, metric_checks=metric_checks)
+            raise
         finally:
-            compose("down", "--volumes")  # Only this newly created disposable project.
+            try:
+                compose("down", "--volumes")  # Only this newly created disposable project.
+                result["cleanup"] = "completed"
+            except Exception:
+                result.update(result="FAIL", cleanup="failed")
+                raise
+            finally:
+                # Preserve partial CI evidence on assertion errors; PASS requires cleanup too.
+                print(json.dumps(result, indent=2))
+
+
+def main():
+    with (Path(tempfile.gettempdir()) / f"{PROJECT}.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError(f"Another local {PROJECT} check is running") from error
+        check_dependencies()
 
 
 if __name__ == "__main__":

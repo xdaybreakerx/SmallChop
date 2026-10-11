@@ -2,7 +2,7 @@ name: Benchmark suite validation
 
 on:
   pull_request:
-    branches: [main, fix/dependency-failures]
+    branches: [main, fix/dependency-failures, test/benchmark-scaffold]
     paths:
       - benchmarks/**
       - cmd/**

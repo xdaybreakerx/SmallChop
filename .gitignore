@@ -33,3 +33,6 @@ go.work.sum
 
 # Docker 
 docker-compose.override.yml
+
+# Local Python verification caches
+__pycache__/

@@ -21,7 +21,7 @@ func TestCacheReadWriteAndMiss(t *testing.T) {
 	})
 	repo := &RedisRepo{Client: client}
 	ctx := context.Background()
-	if _, err := repo.GetLongURL(ctx, "c"); !errors.Is(err, redis.Nil) {
+	if _, err := repo.GetLongURL(ctx, "c"); !errors.Is(err, redis.Nil) || !errors.Is(err, ErrCacheMiss) {
 		t.Fatalf("miss error %v", err)
 	}
 	target := "https://example.com/a%2Fb?q=a%2Bb#fragment"

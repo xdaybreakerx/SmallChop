@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"log"
 	"os"
 	"time"
 
@@ -51,8 +50,6 @@ func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
 		return nil, databaseError(err)
 	}
 
-	log.Println("Connected to MongoDB with RBAC credentials!")
-
 	// Initialize the collection
 	collection := client.Database(os.Getenv("MONGO_DB_NAME")).Collection("urls")
 
@@ -71,8 +68,6 @@ func NewMongoRepo(ctx context.Context) (*MongoRepo, error) {
 
 // SaveURL saves a new URL document into the MongoDB collection or returns the existing short URL if the long URL already exists
 func (repo *MongoRepo) SaveURL(ctx context.Context, longURL string) (string, error) {
-	log.Println("Checking for an existing URL mapping")
-
 	// Sanitize the URL
 	sanitizedURL, err := utils.SanitizeURL(longURL)
 	if err != nil {
@@ -106,11 +101,9 @@ func (repo *MongoRepo) SaveURL(ctx context.Context, longURL string) (string, err
 	// Insert the new URL document
 	_, err = repo.Collection.InsertOne(ctx, urlDoc)
 	if err != nil {
-		log.Printf("Error while saving URL: %v\n", err)
 		return "", databaseError(err)
 	}
 
-	log.Printf("Saved URL mapping with code %s", shortCode)
 	return shortCode, nil
 }
 
@@ -161,4 +154,9 @@ func (repo *MongoRepo) GetNextID(ctx context.Context, counterName string) (int64
 		return 0, databaseError(err)
 	}
 	return result.Seq, nil
+}
+
+// Ping checks required storage without reading URL mappings.
+func (repo *MongoRepo) Ping(ctx context.Context) error {
+	return databaseError(repo.Client.Ping(ctx, nil))
 }
