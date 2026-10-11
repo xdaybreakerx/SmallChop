@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"gochop-it/internal/config"
+	"gochop-it/internal/observability"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/utils"
 )
@@ -27,7 +27,13 @@ type URLCache interface {
 	SetKey(ctx context.Context, key, value string, ttl time.Duration) error
 }
 
+type MongoHealth interface {
+	Ping(context.Context) error
+}
+
 type Handlers struct {
+	Observer      *observability.Observer
+	MongoHealth   MongoHealth
 	Timeouts      config.Timeouts
 	MongoRepo     URLStore
 	RedisRepo     URLCache // nil explicitly disables cache reads and fills.
@@ -68,7 +74,7 @@ func (h *Handlers) RootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Template.Execute(w, nil); err != nil {
-		log.Printf("Error executing template: %v", err)
+		h.Observer.Warn(r.Context(), "template response failed")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 
@@ -112,6 +118,7 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid destination URL", http.StatusBadRequest)
 			return
 		}
+		h.Observer.DependencyFailure(ctx, "mongo", "save")
 		storageFailure(w, err)
 		return
 	}
@@ -119,7 +126,7 @@ func (h *Handlers) ShortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	fullShortURL := h.PublicBaseURL + "/r/" + shortCode
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := fmt.Fprintf(w, `<p class="mt-4 text-green-600">Shortened URL: <a href="/r/%s">%s</a></p>`, template.HTMLEscapeString(shortCode), template.HTMLEscapeString(fullShortURL)); err != nil {
-		log.Printf("Error writing shortened URL response: %v", err)
+		h.Observer.Warn(r.Context(), "shortened URL response write failed")
 	}
 }
 
@@ -153,6 +160,14 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		longURL, cacheErr = h.RedisRepo.GetLongURL(cacheCtx, key)
 		cacheCancel()
 		cacheHit = cacheErr == nil
+		outcome := "error"
+		switch {
+		case cacheHit:
+			outcome = "hit"
+		case errors.Is(cacheErr, repository.ErrCacheMiss):
+			outcome = "miss"
+		}
+		h.Observer.CacheRead(ctx, outcome)
 	}
 	if ctx.Err() != nil {
 		storageFailure(w, ctx.Err())
@@ -166,6 +181,7 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, repository.ErrNotFound) {
 				http.Error(w, "Shortened URL not found", http.StatusNotFound)
 			} else {
+				h.Observer.DependencyFailure(ctx, "mongo", "find")
 				storageFailure(w, err)
 			}
 			return
@@ -175,9 +191,7 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 			fillCtx, fillCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
 			err = h.RedisRepo.SetKey(fillCtx, key, longURL, time.Hour)
 			fillCancel()
-			if err != nil {
-				log.Println("Cache fill failed; serving database destination")
-			}
+			h.Observer.CacheFill(ctx, err != nil)
 		}
 	}
 	http.Redirect(w, r, longURL, http.StatusPermanentRedirect)

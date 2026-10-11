@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	ErrCacheMiss   = errors.New("cache mapping not found")
 	ErrNotFound    = errors.New("URL mapping not found")
 	ErrUnavailable = errors.New("storage unavailable")
 )

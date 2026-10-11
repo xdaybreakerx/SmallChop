@@ -1,0 +1,67 @@
+name: Operational checks
+
+on:
+  pull_request:
+    branches: [main, fix/dependency-failures, test/benchmark-scaffold]
+    paths:
+      - cmd/**
+      - internal/**
+      - deploy/**
+      - scripts/**
+      - Dockerfile
+      - .dockerignore
+      - go.mod
+      - go.sum
+      - .github/workflows/operations.yml
+  push:
+    branches: [main]
+    paths:
+      - cmd/**
+      - internal/**
+      - deploy/**
+      - scripts/**
+      - Dockerfile
+      - .dockerignore
+      - go.mod
+      - go.sum
+      - .github/workflows/operations.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check formatting, vet and race tests
+        run: |
+          sh -n scripts/local.sh
+          gofmt -s -w .
+          git diff --exit-code -- '*.go'
+          go vet ./...
+          go test -race ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          args: --timeout 5m
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check real dependency health, failure metrics and recovery
+        run: python3 scripts/check-dependencies.py > dependency-check.json
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-check
+          path: dependency-check.json
+          if-no-files-found: warn
+          retention-days: 14

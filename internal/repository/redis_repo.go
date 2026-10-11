@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -35,7 +36,11 @@ func (r *RedisRepo) SetKey(ctx context.Context, key, value string, ttl time.Dura
 
 // GetLongURL reads only the cache. The caller owns database fallback and cache fill.
 func (r *RedisRepo) GetLongURL(ctx context.Context, shortCode string) (string, error) {
-	return r.Client.Get(ctx, shortCode).Result()
+	value, err := r.Client.Get(ctx, shortCode).Result()
+	if errors.Is(err, redis.Nil) {
+		return value, errors.Join(ErrCacheMiss, err)
+	}
+	return value, err
 }
 
 func (r *RedisRepo) Ping(ctx context.Context) error {

@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,14 +11,25 @@ import (
 
 	"gochop-it/internal/config"
 	"gochop-it/internal/handlers"
+	"gochop-it/internal/observability"
 	"gochop-it/internal/repository"
 	"gochop-it/internal/routes"
 )
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	observer := observability.New(logger)
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Invalid application configuration: %v", err)
+		logger.Error("invalid application configuration", "error", err.Error())
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeouts.Startup)
 
@@ -27,9 +37,10 @@ func main() {
 	mongoRepo, err := repository.NewMongoRepo(ctx)
 	cancel()
 	if err != nil {
-		log.Fatalf("Could not connect to MongoDB: %v", err)
+		logger.Error("required MongoDB startup failed")
+		return err
 	}
-	fmt.Println("Connected to MongoDB!")
+	logger.Info("MongoDB connected")
 
 	// Redis is optional; keep the client so later requests can recover automatically.
 	var cache handlers.URLCache
@@ -39,28 +50,32 @@ func main() {
 		cache = redisRepo
 		cacheCtx, cacheCancel := context.WithTimeout(context.Background(), cfg.Timeouts.Cache)
 		if err := redisRepo.Ping(cacheCtx); err != nil {
-			log.Println("Redis unavailable at startup; using MongoDB fallback")
+			logger.Warn("Redis unavailable at startup; using MongoDB fallback")
 		}
 		cacheCancel()
 	}
 	defer func() {
 		if redisRepo != nil {
 			if err := redisRepo.Client.Close(); err != nil {
-				log.Printf("Redis close failed: %v", err)
+				logger.Warn("Redis close failed")
 			}
 		}
 		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
 		defer closeCancel()
 		if err := mongoRepo.Client.Disconnect(closeCtx); err != nil {
-			log.Printf("MongoDB close failed: %v", err)
+			logger.Warn("MongoDB close failed")
 		}
 	}()
 
 	// Initialize Handlers
 	handlers, err := handlers.NewHandlers(mongoRepo, cache, cfg.PublicBaseURL, cfg.Timeouts)
 	if err != nil {
-		log.Fatalf("Failed to initialize handlers: %v", err)
+		logger.Error("handler initialization failed")
+		return err
 	}
+
+	handlers.Observer = observer
+	handlers.MongoHealth = mongoRepo
 
 	// Register Routes
 	mux := routes.NewMux(handlers, cfg)
@@ -75,24 +90,43 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
-		}
-	}()
-	fmt.Println("Server is running on http://localhost:8080")
-
-	// Wait for interrupt signal to gracefully shutdown the server
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	fmt.Println("Shutting down server...")
-
-	ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctxShutDown); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+	metricsServer := &http.Server{
+		Addr: ":9090", Handler: observer.MetricsHandler(),
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 	}
-	fmt.Println("Server exiting")
+	logger.Info("HTTP listeners starting", "application_address", srv.Addr, "metrics_address", metricsServer.Addr)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := serve(ctx, srv, metricsServer); err != nil {
+		logger.Error("HTTP listener failed")
+		return err
+	}
+	logger.Info("server exited")
+	return nil
+}
+
+// A listener failure stops both servers; shutdown shares a bounded budget.
+func serve(ctx context.Context, servers ...*http.Server) error {
+	serverErrors := make(chan error, len(servers))
+	for _, server := range servers {
+		go func() { serverErrors <- server.ListenAndServe() }()
+	}
+	var failure error
+	select {
+	case <-ctx.Done():
+	case err := <-serverErrors:
+		if err != http.ErrServerClosed {
+			failure = err
+		}
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, server := range servers {
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("HTTP shutdown budget exceeded")
+			_ = server.Close()
+		}
+	}
+	return failure
 }
