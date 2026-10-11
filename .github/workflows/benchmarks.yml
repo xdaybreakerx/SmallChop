@@ -1,0 +1,64 @@
+name: Benchmark suite validation
+
+on:
+  pull_request:
+    branches: [main, fix/dependency-failures]
+    paths:
+      - benchmarks/**
+      - cmd/**
+      - internal/**
+      - deploy/**
+      - Dockerfile
+      - .dockerignore
+      - go.mod
+      - go.sum
+      - .github/workflows/benchmarks.yml
+  push:
+    branches: [main]
+    paths:
+      - benchmarks/**
+      - cmd/**
+      - internal/**
+      - deploy/**
+      - Dockerfile
+      - .dockerignore
+      - go.mod
+      - go.sum
+      - .github/workflows/benchmarks.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the pinned k6 binary
+        shell: bash
+        run: |
+          version=$(cat benchmarks/.k6-version)
+          mkdir -p "$RUNNER_TEMP/smallchop-k6"
+          cd "$RUNNER_TEMP/smallchop-k6"
+          archive="k6-v${version}-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 --output "$archive" "https://github.com/grafana/k6/releases/download/v${version}/${archive}"
+          echo "39c3117b6af817592dcd0ce4242105c0a7af10948c2a425306f0be8f7a8a8ab1  $archive" > expected.sha256
+          sha256sum --check expected.sha256
+          tar -xzf "$archive"
+          echo "$RUNNER_TEMP/smallchop-k6/k6-v${version}-linux-amd64" >> "$GITHUB_PATH"
+      - name: Test qualification and isolation rules
+        run: python3 -m unittest discover -s benchmarks -p 'test_*.py' -v
+      - name: Check the actual generator against HTTP fixtures
+        run: python3 benchmarks/check-harness.py --output benchmarks/results/harness
+      - name: Check the application in both backend modes
+        run: python3 benchmarks/suite.py --check --output benchmarks/results/integration
+      - name: Upload benchmark validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-validation
+          path: benchmarks/results/
+          if-no-files-found: warn
+          retention-days: 14

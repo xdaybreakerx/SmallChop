@@ -30,7 +30,7 @@ type URLCache interface {
 type Handlers struct {
 	Timeouts      config.Timeouts
 	MongoRepo     URLStore
-	RedisRepo     URLCache
+	RedisRepo     URLCache // nil explicitly disables cache reads and fills.
 	Template      *template.Template
 	TemplatePath  string
 	PublicBaseURL string
@@ -145,14 +145,20 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), h.Timeouts.Request)
 	defer cancel()
-	cacheCtx, cacheCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
-	longURL, cacheErr := h.RedisRepo.GetLongURL(cacheCtx, key)
-	cacheCancel()
+	var longURL string
+	cacheHit := false
+	if h.RedisRepo != nil {
+		cacheCtx, cacheCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
+		var cacheErr error
+		longURL, cacheErr = h.RedisRepo.GetLongURL(cacheCtx, key)
+		cacheCancel()
+		cacheHit = cacheErr == nil
+	}
 	if ctx.Err() != nil {
 		storageFailure(w, ctx.Err())
 		return
 	}
-	if cacheErr != nil {
+	if !cacheHit {
 		dbCtx, dbCancel := context.WithTimeout(ctx, h.Timeouts.Mongo)
 		urlDoc, err := h.MongoRepo.FindURLByID(dbCtx, id)
 		dbCancel()
@@ -165,11 +171,13 @@ func (h *Handlers) RedirectHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		longURL = urlDoc.LongURL
-		fillCtx, fillCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
-		err = h.RedisRepo.SetKey(fillCtx, key, longURL, time.Hour)
-		fillCancel()
-		if err != nil {
-			log.Println("Cache fill failed; serving database destination")
+		if h.RedisRepo != nil {
+			fillCtx, fillCancel := context.WithTimeout(ctx, h.Timeouts.Cache)
+			err = h.RedisRepo.SetKey(fillCtx, key, longURL, time.Hour)
+			fillCancel()
+			if err != nil {
+				log.Println("Cache fill failed; serving database destination")
+			}
 		}
 	}
 	http.Redirect(w, r, longURL, http.StatusPermanentRedirect)

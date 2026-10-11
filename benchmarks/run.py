@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import resource
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -74,6 +75,7 @@ def main():
     parser.add_argument("--timeout-ms", type=positive, default=3000)
     parser.add_argument("--k6", default="k6", help="path to the pinned k6 binary")
     parser.add_argument("--output", type=Path, help="new directory; existing paths are refused")
+    parser.add_argument("--containers", nargs="*", default=[], help="suite-owned containers to sample with docker stats")
     args = parser.parse_args()
     target = local_origin(args.target)
     fixtures = read_fixtures(args.fixtures)
@@ -99,16 +101,38 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith(("K6_", "BENCH_"))}
     env.update(BENCH_CONFIG=json.dumps(config), BENCH_FIXTURES=str(output / "fixtures.json"),
                BENCH_SUMMARY=str(output / "summary.json"), K6_NO_USAGE_REPORT="true")
-    with (output / "console.log").open("w") as log:
-        result = subprocess.run([args.k6, "run", str(HERE / "redirect.js")],
-                                cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-    metadata.update(exit_code=result.returncode,
+    sampler = None
+    with (output / "console.log").open("w") as log, (output / "resources.jsonl").open("w") as samples, (output / "resources.log").open("w") as stats_log:
+        try:
+            if args.containers:
+                sampler = subprocess.Popen(["docker", "stats", "--format", "{{json .}}", *args.containers],
+                                           stdout=samples, stderr=stats_log)
+            before = resource.getrusage(resource.RUSAGE_CHILDREN)
+            try:
+                result = subprocess.run([args.k6, "run", str(HERE / "redirect.js")],
+                                        cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                        timeout=args.duration + args.timeout_ms / 1000 + 20)
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired:
+                exit_code = 124
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
+            metadata["generator_cpu_seconds"] = dict(user=after.ru_utime - before.ru_utime,
+                                                     system=after.ru_stime - before.ru_stime)
+        finally:
+            if sampler is not None:
+                sampler.terminate()
+                try:
+                    sampler.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    sampler.kill()
+                    sampler.wait()
+    metadata.update(exit_code=exit_code,
                     finished_at_utc=datetime.now(timezone.utc).isoformat())
     (output / "run.json").write_text(json.dumps(metadata, indent=2) + "\n")
-    print(f"k6 exit {result.returncode}; results: {output}")
-    if result.returncode:
+    print(f"k6 exit {exit_code}; results: {output}")
+    if exit_code:
         print((output / "console.log").read_text(), file=sys.stderr)
-    return result.returncode
+    return exit_code
 
 
 if __name__ == "__main__":

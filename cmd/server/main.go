@@ -32,15 +32,22 @@ func main() {
 	fmt.Println("Connected to MongoDB!")
 
 	// Redis is optional; keep the client so later requests can recover automatically.
-	redisRepo := repository.NewRedisRepo(cfg.Timeouts.Cache)
-	cacheCtx, cacheCancel := context.WithTimeout(context.Background(), cfg.Timeouts.Cache)
-	if err := redisRepo.Ping(cacheCtx); err != nil {
-		log.Println("Redis unavailable at startup; using MongoDB fallback")
+	var cache handlers.URLCache
+	var redisRepo *repository.RedisRepo
+	if cfg.CacheEnabled {
+		redisRepo = repository.NewRedisRepo(cfg.Timeouts.Cache)
+		cache = redisRepo
+		cacheCtx, cacheCancel := context.WithTimeout(context.Background(), cfg.Timeouts.Cache)
+		if err := redisRepo.Ping(cacheCtx); err != nil {
+			log.Println("Redis unavailable at startup; using MongoDB fallback")
+		}
+		cacheCancel()
 	}
-	cacheCancel()
 	defer func() {
-		if err := redisRepo.Client.Close(); err != nil {
-			log.Printf("Redis close failed: %v", err)
+		if redisRepo != nil {
+			if err := redisRepo.Client.Close(); err != nil {
+				log.Printf("Redis close failed: %v", err)
+			}
 		}
 		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
 		defer closeCancel()
@@ -50,7 +57,7 @@ func main() {
 	}()
 
 	// Initialize Handlers
-	handlers, err := handlers.NewHandlers(mongoRepo, redisRepo, cfg.PublicBaseURL, cfg.Timeouts)
+	handlers, err := handlers.NewHandlers(mongoRepo, cache, cfg.PublicBaseURL, cfg.Timeouts)
 	if err != nil {
 		log.Fatalf("Failed to initialize handlers: %v", err)
 	}
