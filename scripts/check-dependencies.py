@@ -143,6 +143,7 @@ def check_dependencies():
             assert not any(secret in output for secret in ["log-privacy-secret", "cache-offline#fragment", "a%2Fb", "caller-private-id"])
             return len(completed)
 
+        result = {"result": "INCOMPLETE", "project": PROJECT}
         try:
             compose("up", "--build", "-d", "--wait", "--wait-timeout", "120")
             request("/livez", 200)
@@ -246,13 +247,24 @@ def check_dependencies():
             request("/r/" + code, 308, first)
             assert mongo('print(appdb.urls.findOne({_id:1}).accessCount)') == "7"
             log_count += check_safe_logs()
-            print(json.dumps({"result": "PASS", "project": PROJECT, "requests": initial_observations + recovery_observations + observations,
+            result = {"result": "PASS", "project": PROJECT, "requests": initial_observations + recovery_observations + observations,
                               "metric_checks": metric_checks, "correlated_logs": log_count,
                               "health_dependency_contract": True, "private_metrics_listener": True,
                               "optional_redis_startup": True, "required_mongo_startup_bounded": True,
-                              "cache_recovery_without_app_restart": True, "legacy_count_unchanged": True}, indent=2))
+                              "cache_recovery_without_app_restart": True, "legacy_count_unchanged": True}
+        except Exception as error:
+            result.update(result="FAIL", error=str(error), requests=observations, metric_checks=metric_checks)
+            raise
         finally:
-            compose("down", "--volumes")  # Only this newly created disposable project.
+            try:
+                compose("down", "--volumes")  # Only this newly created disposable project.
+                result["cleanup"] = "completed"
+            except Exception:
+                result.update(result="FAIL", cleanup="failed")
+                raise
+            finally:
+                # Preserve partial CI evidence on assertion errors; PASS requires cleanup too.
+                print(json.dumps(result, indent=2))
 
 
 def main():

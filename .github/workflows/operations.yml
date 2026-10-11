@@ -41,6 +41,7 @@ jobs:
           go-version-file: go.mod
       - name: Check formatting, vet and race tests
         run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py' -v
           sh -n scripts/local.sh
           gofmt -s -w .
           git diff --exit-code -- '*.go'
