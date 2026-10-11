@@ -74,6 +74,10 @@ The check uses [Compose attribute replacement](https://docs.docker.com/reference
 
 ## Development checks and dependency baseline
 
+For local redirect load testing and harness verification, see the
+[benchmark guide](benchmarks/README.md). It includes workload fixtures, a pinned
+generator, correctness thresholds, and archived results.
+
 Use Go 1.27.1 and golangci-lint 2.14.0. CI reads the toolchain from `go.mod`; the Docker builder uses the same Go release and downloads locked modules without updating them. Run the following checks from the repository root:
 
 ```sh
