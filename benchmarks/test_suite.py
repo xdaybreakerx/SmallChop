@@ -4,11 +4,13 @@ import copy
 import json
 from pathlib import Path
 import tempfile
+import signal
+import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from report import qualify, write_report
-from suite import fixtures, plan, Stack, SuiteLock
+from suite import fixtures, plan, Stack, SuiteLock, workload
 
 
 class QualificationTests(unittest.TestCase):
@@ -23,9 +25,9 @@ class QualificationTests(unittest.TestCase):
             "dropped_iterations": dict(count=0),
             "successful_redirect_duration": {"p(95)": 2, "p(99)": 4},
         }.items()}
-        self.before = dict(mongo_find=100, redis_get=100, redis_set=20,
+        self.before = dict(mongo_collection_reads=100, mongo_find_global=100, mongo_namespace="url_shortener.urls", redis_get=100, redis_set=20,
                            redis_hits=100, redis_misses=10, mongo_uptime=10, redis_run_id="same")
-        self.after = dict(self.before, mongo_find=120, mongo_uptime=20)
+        self.after = dict(self.before, mongo_collection_reads=121, mongo_find_global=120, mongo_uptime=20)
 
     def evaluate(self, mode="mongo-only"):
         (self.output / "run.json").write_text(json.dumps(self.run))
@@ -35,7 +37,7 @@ class QualificationTests(unittest.TestCase):
     def test_valid_paths_and_wrong_mode(self):
         self.assertTrue(self.evaluate()["qualified"])
         self.assertFalse(self.evaluate("mongo-redis")["qualified"])
-        self.after.update(mongo_find=100, redis_get=120, redis_hits=120)
+        self.after.update(mongo_collection_reads=101, redis_get=120, redis_hits=120)
         cached = self.evaluate("mongo-redis")
         self.assertTrue(cached["qualified"])
         self.assertEqual(cached["cache_hit_ratio"], 1)
@@ -54,11 +56,17 @@ class QualificationTests(unittest.TestCase):
         self.after["redis_run_id"] = "restarted"
         self.assertFalse(self.evaluate()["qualified"])
         self.after["redis_run_id"] = "same"
-        self.after["mongo_find"] = 1
+        self.after["mongo_collection_reads"] = 1
         self.assertFalse(self.evaluate()["qualified"])
 
     def test_unexpected_cache_fills_invalidate_warm_result(self):
-        self.after.update(mongo_find=100, redis_get=120, redis_hits=120, redis_set=21)
+        self.after.update(mongo_collection_reads=101, redis_get=120, redis_hits=120, redis_set=21)
+        self.assertFalse(self.evaluate("mongo-redis")["qualified"])
+
+    def test_global_background_reads_are_diagnostic_only(self):
+        self.after.update(mongo_collection_reads=101, mongo_find_global=999, redis_get=120, redis_hits=120)
+        self.assertTrue(self.evaluate("mongo-redis")["qualified"])
+        self.after["mongo_collection_reads"] += 1  # Extra read of the actual URL collection still fails.
         self.assertFalse(self.evaluate("mongo-redis")["qualified"])
 
     def test_incomplete_or_invalid_pairs_do_not_report_improvement(self):
@@ -81,6 +89,19 @@ class QualificationTests(unittest.TestCase):
 
 
 class IsolationTests(unittest.TestCase):
+    def test_interruption_stops_owned_generator_group(self):
+        from argparse import Namespace
+        args = Namespace(k6="k6", current_rate=20, vus=2, timeout_ms=1000)
+        for error in (KeyboardInterrupt(), subprocess.TimeoutExpired("runner", 1)):
+            with self.subTest(error=type(error).__name__):
+                process = Mock(pid=4242)
+                process.communicate.side_effect = [error, ("", "")]
+                with patch("suite.subprocess.Popen", return_value=process), patch("suite.os.killpg") as kill:
+                    with self.assertRaises(type(error)):
+                        workload(args, Namespace(target="http://127.0.0.1:8080"), Path("fixtures.json"), Path("results"), "check", 1)
+                    kill.assert_called_once_with(4242, signal.SIGTERM)
+                    self.assertEqual(process.communicate.call_count, 2)
+
     def test_concurrent_project_lock(self):
         with tempfile.TemporaryDirectory() as temporary:
             project = "smallchop-local-benchmark-unit-" + Path(temporary).name

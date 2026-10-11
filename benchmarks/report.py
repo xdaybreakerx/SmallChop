@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from statistics import median
 
-COUNTERS = ("mongo_find", "redis_get", "redis_set", "redis_hits", "redis_misses")
+COUNTERS = ("redis_get", "redis_set", "redis_hits", "redis_misses")
 
 
 def qualify(directory, mode, before, after):
@@ -19,6 +19,9 @@ def qualify(directory, mode, before, after):
     requests = value("http_reqs", "count")
     successes = value("successful_redirects", "count")
     delta = {key: after[key] - before[key] for key in COUNTERS}
+    # The before-snapshot's $collStats aggregation is itself one collection read.
+    # Each suite calibrates that behavior before load and archives the raw counts.
+    delta["mongo_reads"] = after["mongo_collection_reads"] - before["mongo_collection_reads"] - 1
     reasons = []
     if (run["exit_code"] != 0 or requests <= 0 or successes != requests
             or value("valid_redirects", "rate") != 1 or value("http_req_failed", "rate") != 0):
@@ -26,11 +29,12 @@ def qualify(directory, mode, before, after):
     if value("dropped_iterations", "count") != 0:
         reasons.append("generator dropped iterations")
     if (any(n < 0 for n in delta.values()) or after["mongo_uptime"] < before["mongo_uptime"]
-            or after["redis_run_id"] != before["redis_run_id"]):
+            or after["redis_run_id"] != before["redis_run_id"]
+            or after["mongo_namespace"] != before["mongo_namespace"]):
         reasons.append("backend counters reset or instance restarted")
-    expected = dict(mongo_find=requests, redis_get=0, redis_set=0, redis_hits=0, redis_misses=0)
+    expected = dict(mongo_reads=requests, redis_get=0, redis_set=0, redis_hits=0, redis_misses=0)
     if mode == "mongo-redis":
-        expected.update(mongo_find=0, redis_get=requests, redis_hits=requests)
+        expected.update(mongo_reads=0, redis_get=requests, redis_hits=requests)
     elif mode != "mongo-only":
         raise ValueError(f"unknown mode: {mode}")
     if delta != expected:
@@ -45,6 +49,8 @@ def qualify(directory, mode, before, after):
                 server_errors=value("server_error_redirects", "count"),
                 transport_errors=value("transport_errors", "count"),
                 latency_ms=latency, backend_delta=delta,
+                mongo_snapshot_reads_subtracted=1,
+                mongo_global_find_delta=after["mongo_find_global"] - before["mongo_find_global"],
                 cache_hit_ratio=delta["redis_hits"] / delta["redis_get"] if delta["redis_get"] else None)
 
 

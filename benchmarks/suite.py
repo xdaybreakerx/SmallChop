@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -95,7 +96,7 @@ class Stack:
         self.process_env = {k: v for k, v in os.environ.items()
                             if not k.startswith(("COMPOSE_", "BENCH_", "LOCAL_", "MONGO_", "REDIS_", "CREATE_", "REDIRECT_"))}
 
-    def run(self, command, timeout=180, record=True):
+    def run(self, command, timeout=180, record=True, combined=False):
         result = subprocess.run(command, cwd=ROOT, env=self.process_env,
                                 capture_output=True, text=True, timeout=timeout)
         if record:
@@ -103,7 +104,7 @@ class Stack:
         self.log.flush()
         if result.returncode:
             raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(command[:3])}; see lifecycle.log")
-        return result.stdout.strip()
+        return (result.stdout + (result.stderr if combined else "")).strip()
 
     def compose(self, *args, timeout=180):
         return self.run(self.prefix + list(args), timeout)
@@ -156,7 +157,11 @@ class Stack:
     def counters(self):
         mongo = json.loads(self.mongo("const s = admin.runCommand({serverStatus: 1}); "
                                      "if (!s.ok) throw new Error('serverStatus'); "
-                                     "print(JSON.stringify({mongo_find: Number(s.metrics.commands.find?.total || 0), mongo_uptime: s.uptime}));"))
+                                     "const d = admin.getSiblingDB(process.env.MONGO_DB_NAME); "
+                                     "const c = d.urls.aggregate([{$collStats:{latencyStats:{}}}]).toArray()[0]; "
+                                     "if (!c?.latencyStats?.reads) throw new Error('collection read stats missing'); "
+                                     "print(JSON.stringify({mongo_find_global: Number(s.metrics.commands.find?.total || 0), "
+                                     "mongo_collection_reads: Number(c.latencyStats.reads.ops), mongo_namespace:c.ns, mongo_uptime: s.uptime}));"))
         info = parse_info(self.redis("INFO", "stats", "commandstats", "server"))
         def calls(command):
             values = dict(item.split("=", 1) for item in info.get("cmdstat_" + command, "calls=0").split(","))
@@ -164,6 +169,19 @@ class Stack:
         return dict(**mongo, redis_get=calls("get"), redis_set=calls("set"),
                     redis_hits=int(info["keyspace_hits"]), redis_misses=int(info["keyspace_misses"]),
                     redis_run_id=info["run_id"])
+
+    def calibrate_counters(self):
+        first, second = self.counters(), self.counters()
+        # Known unrelated find: prove it affects the diagnostic global counter,
+        # while the collection-scoped delta contains only our one stats probe.
+        self.mongo("admin.getSiblingDB(process.env.MONGO_DB_NAME).getCollection('benchmark_noise').findOne({});")
+        third = self.counters()
+        if (second["mongo_collection_reads"] - first["mongo_collection_reads"] != 1
+                or third["mongo_collection_reads"] - second["mongo_collection_reads"] != 1
+                or third["mongo_find_global"] - second["mongo_find_global"] < 1):
+            raise RuntimeError("Mongo snapshot calibration failed; refusing counter adjustment")
+        (self.output / "counter-calibration.json").write_text(json.dumps(
+            dict(first=first, second=second, after_unrelated_find=third, snapshot_read_adjustment=1), indent=2) + "\n")
 
     def warm_all(self, rows):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -214,11 +232,25 @@ def workload(args, stack, fixture_file, directory, label, duration, containers=N
                              "--output", str(directory)]
     if containers:
         command += ["--containers", *containers]
-    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True,
-                            timeout=duration + args.timeout_ms / 1000 + 40)
+    # Keep runner, k6 and its resource sampler in one owned process group.
+    process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, start_new_session=True)
+    try:
+        _, stderr = process.communicate(timeout=duration + args.timeout_ms / 1000 + 40)
+    except BaseException:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+        raise
     if not (directory / "summary.json").exists():
-        raise RuntimeError("k6 failed before producing results: " + result.stderr[-1000:])
-    return result.returncode
+        raise RuntimeError("k6 failed before producing results: " + stderr[-1000:])
+    return process.returncode
 
 
 def main():
@@ -254,7 +286,8 @@ def main():
     fixture_file = output / "fixtures.json"
     fixture_file.write_text(json.dumps(rows, indent=2) + "\n")
     config = {key: getattr(args, key) for key in ("rates", "duration", "warmup", "repetitions", "dataset", "vus", "timeout_ms", "check", "project")}
-    suite = dict(schema_version=1, config=config, plan=plan(args.rates, args.repetitions), measurements=[],
+    suite = dict(schema_version=2, config=config, plan=plan(args.rates, args.repetitions), measurements=[],
+                 backend_method="Mongo urls collection reads minus calibrated snapshot read; Redis instance GET/SET/hits/misses",
                  source_revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                  source_dirty=bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)),
                  application_source_sha256=source_digest(),
@@ -276,6 +309,7 @@ def main():
                                    memory_bytes=int(stack.run(["docker", "info", "--format", "{{.MemTotal}}"])))
             suite["images_and_limits"] = stack.identities()
             stack.seed(rows)
+            stack.calibrate_counters()
             for index, point in enumerate(suite["plan"], 1):
                 mode, args.current_rate = point["mode"], point["rate"]
                 label = f"{index:02d}-{mode}-r{point['rate']}-rep{point['repetition']}"
@@ -301,6 +335,8 @@ def main():
                          [info["container_id"] for info in identities.values()])
                 after = stack.counters()
                 (directory / "backend.json").write_text(json.dumps(dict(before=before, after=after), indent=2) + "\n")
+                app_logs = stack.run(["docker", "logs", "--timestamps", identities["app"]["container_id"]], combined=True)
+                (directory / "app.log").write_text(app_logs + "\n")
                 observation = qualify(directory, mode, before, after)
                 if warmup_exit:
                     observation["qualified"] = False
@@ -309,9 +345,9 @@ def main():
                 observation.update(rate=point["rate"], repetition=point["repetition"], directory=label)
                 suite["measurements"].append(observation)
                 save()
-                print(f"  {'qualified' if observation['qualified'] else 'UNQUALIFIED'}; Mongo finds={observation['backend_delta']['mongo_find']}, Redis hits={observation['backend_delta']['redis_hits']}", flush=True)
+                print(f"  {'qualified' if observation['qualified'] else 'UNQUALIFIED'}; Mongo URL reads={observation['backend_delta']['mongo_reads']}, Redis hits={observation['backend_delta']['redis_hits']}", flush=True)
         except (Exception, KeyboardInterrupt) as error:
-            suite["error"] = f"{type(error).__name__}: {error}"
+            suite["error"] = f"{type(error).__name__}: {error or 'interrupted'}"
             raise
         finally:
             try:
@@ -333,5 +369,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except (Exception, KeyboardInterrupt) as error:
-        print(f"benchmark suite: {error}", file=sys.stderr)
+        print(f"benchmark suite: {error or 'interrupted; partial evidence retained'}", file=sys.stderr)
         sys.exit(1)

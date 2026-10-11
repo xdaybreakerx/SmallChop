@@ -131,17 +131,23 @@ MongoDB/Redis performance. Add `--output /path/to/new-directory` to retain mock 
 False bypasses startup/read/fill completely; defaults remain enabled. `run.py --label`
 is annotation only and never configures an existing app.
 
-Before/after each measurement, the suite snapshots MongoDB's
-[`metrics.commands.find.total`](https://www.mongodb.com/docs/manual/reference/command/serverstatus/)
+Before/after each measurement, the suite snapshots read-operation counts for MongoDB's
+`urls` collection using [`$collStats`](https://www.mongodb.com/docs/manual/reference/operator/aggregation/collstats/)
 and Redis [INFO](https://redis.io/docs/latest/commands/info/) GET/SET calls and keyspace
-hits/misses. No probes run during the HTTP measurement. Dedicated instances contain
-only this workload; health checks use pings/page requests, not lookup commands.
-These counters are instance-wide and must not be used to infer this workload's path
-on a shared database.
+hits/misses. Each `$collStats` aggregation itself counts as one collection read;
+the suite calibrates this before load and subtracts exactly the before-snapshot's
+single read from the delta. Raw snapshots and the adjustment are preserved. A known
+unrelated-collection find verifies that only the diagnostic global Mongo counter
+changes. Unexpected extra reads of `urls` still disqualify the point.
 
-A qualified Mongo-only point requires exactly one find per HTTP request and no cache
+No probes run during the HTTP measurement. Health checks use pings/page requests,
+not collection reads. Mongo's instance-wide find counter is diagnostic only because
+it can include internal maintenance and other namespaces. Redis counters are
+instance-wide; use this suite's dedicated instances, never a shared database/cache.
+
+A qualified Mongo-only point requires exactly one adjusted URL-collection read per HTTP request and no cache
 GET/SET/hits/misses. A qualified warm-cache point requires one Redis hit per request,
-zero misses/fills and zero Mongo finds. Both require valid redirects, no HTTP failures
+zero misses/fills and zero adjusted URL-collection reads. Both require valid redirects, no HTTP failures
 or dropped iterations, and no counter reset/restart. Counter disagreements invalidate
 the point even when its redirects are correct.
 
@@ -152,8 +158,11 @@ Full-suite output is an ignored `benchmarks/results/suite-<timestamp>/` director
 - `suite.json`: plan, point qualification/reasons, source revision/dirty state, app
   source digest, image IDs/limits, fixture digest and Docker/generator context.
 - `seed.json` and `fixtures.json`: deterministic dataset and actual Mongo indexes.
+- `counter-calibration.json`: raw snapshots proving the single stats-probe read and
+  exclusion of an unrelated collection find.
 - Point directories: raw workload outputs plus `backend.json` snapshots and
-  `application.json` effective non-sensitive configuration/image IDs. Separate
+  `application.json` effective non-sensitive configuration/image IDs, and `app.log`
+  diagnostics from that app process. Separate
   `*-warmup/` directories are excluded from measurements.
 - `comparison.json` and `comparison.md`: per-rate/mode results, median/min/max run p95,
   successful RPS, and median paired p95 change where all repetitions qualify.
