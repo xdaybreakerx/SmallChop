@@ -30,6 +30,7 @@ func DefaultTimeouts() Timeouts {
 }
 
 type Config struct {
+	CacheEnabled   bool
 	Timeouts       Timeouts
 	PublicBaseURL  string
 	TrustedProxies []netip.Addr
@@ -41,6 +42,14 @@ func Load() (Config, error) { return load(os.Getenv) }
 
 func load(getenv func(string) string) (Config, error) {
 	var cfg Config
+	cfg.CacheEnabled = true
+	switch getenv("CACHE_ENABLED") {
+	case "", "true":
+	case "false":
+		cfg.CacheEnabled = false
+	default:
+		return cfg, fmt.Errorf("CACHE_ENABLED must be true or false")
+	}
 	base, err := url.Parse(getenv("PUBLIC_BASE_URL"))
 	if err != nil || base == nil || (base.Scheme != "http" && base.Scheme != "https") ||
 		base.Hostname() == "" || base.User != nil || base.Opaque != "" ||

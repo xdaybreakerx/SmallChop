@@ -30,14 +30,14 @@ func TestLoad(t *testing.T) {
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PUBLIC_BASE_URL", "http://127.0.0.1:8080")
 	t.Setenv("TRUSTED_PROXY_IPS", "")
-	for _, key := range []string{"CREATE_RATE_PER_SECOND", "CREATE_RATE_BURST", "REDIRECT_RATE_PER_SECOND", "REDIRECT_RATE_BURST", "REQUEST_TIMEOUT", "MONGO_TIMEOUT", "CACHE_TIMEOUT", "STARTUP_TIMEOUT"} {
+	for _, key := range []string{"CACHE_ENABLED", "CREATE_RATE_PER_SECOND", "CREATE_RATE_BURST", "REDIRECT_RATE_PER_SECOND", "REDIRECT_RATE_BURST", "REQUEST_TIMEOUT", "MONGO_TIMEOUT", "CACHE_TIMEOUT", "STARTUP_TIMEOUT"} {
 		t.Setenv(key, "")
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Timeouts != DefaultTimeouts() {
+	if !cfg.CacheEnabled || cfg.Timeouts != DefaultTimeouts() {
 		t.Fatalf("unexpected timeouts: %+v", cfg.Timeouts)
 	}
 	if cfg.CreatePolicy.Rate != 2 || cfg.CreatePolicy.Burst != 4 || len(cfg.TrustedProxies) != 0 {
@@ -56,6 +56,7 @@ func TestLoadInvalid(t *testing.T) {
 		{"CREATE_RATE_PER_SECOND", "0"}, {"CREATE_RATE_PER_SECOND", "NaN"}, {"CREATE_RATE_PER_SECOND", "Inf"},
 		{"REQUEST_TIMEOUT", "0"}, {"MONGO_TIMEOUT", "-1s"}, {"CACHE_TIMEOUT", "broken"}, {"STARTUP_TIMEOUT", "61s"},
 		{"REDIRECT_RATE_PER_SECOND", "-1"}, {"CREATE_RATE_BURST", "0"}, {"REDIRECT_RATE_BURST", "no"},
+		{"CACHE_ENABLED", "1"}, {"CACHE_ENABLED", "FALSE"}, {"CACHE_ENABLED", "broken"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
@@ -72,5 +73,20 @@ func TestLoadInvalid(t *testing.T) {
 				t.Fatal("invalid configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestCacheDisabled(t *testing.T) {
+	cfg, err := load(func(key string) string {
+		if key == "PUBLIC_BASE_URL" {
+			return "https://example.com"
+		}
+		if key == "CACHE_ENABLED" {
+			return "false"
+		}
+		return ""
+	})
+	if err != nil || cfg.CacheEnabled {
+		t.Fatalf("cache bypass: %+v, %v", cfg, err)
 	}
 }

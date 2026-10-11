@@ -303,6 +303,29 @@ func TestWarmRedirectDoesNotUseMongo(t *testing.T) {
 	}
 }
 
+func TestRedirectWithoutCache(t *testing.T) {
+	target := "https://example.com/a%2Fb?x=1&x=2#fragment"
+	store := &fakeStore{destination: target}
+	h, _ := testHandlers(t, store)
+	h.RedisRepo = nil
+	for range 2 {
+		w := httptest.NewRecorder()
+		h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+		if w.Code != 308 || w.Header().Get("Location") != target {
+			t.Fatalf("uncached redirect: %d, %q", w.Code, w.Header().Get("Location"))
+		}
+	}
+	if store.finds != 2 {
+		t.Fatalf("expected one database lookup per uncached request; got %d", store.finds)
+	}
+	store.findErr = repository.ErrUnavailable
+	w := httptest.NewRecorder()
+	h.RedirectHandler(w, httptest.NewRequest("GET", "/r/c", nil))
+	if w.Code != 503 {
+		t.Fatalf("uncached storage failure: %d", w.Code)
+	}
+}
+
 func waitForDeadline(ctx context.Context) error {
 	<-ctx.Done()
 	return ctx.Err()

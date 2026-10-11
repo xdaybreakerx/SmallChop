@@ -1,0 +1,4 @@
+[
+  {"code": "c", "destination": "https://example.com/a%2Fb?x=1&x=2#section"},
+  {"code": "d", "destination": "https://example.org/second"}
+]

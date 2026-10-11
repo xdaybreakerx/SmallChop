@@ -1,0 +1,22 @@
+# Merge only with deploy/compose.local.yml; Compose 2.24.4+ for !override.
+# The suite supplies a temporary env file, never the checkout's .env files.
+services:
+  app:
+    env_file: !override ["${BENCH_ENV_FILE:?benchmark env file required}"]
+    environment:
+      CACHE_ENABLED: "${BENCH_CACHE_ENABLED:-true}"
+    cpus: 1.0
+    mem_limit: 512m
+  mongo:
+    env_file: !override ["${BENCH_ENV_FILE:?benchmark env file required}"]
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    cpus: 1.0
+    mem_limit: 1g
+  redis:
+    env_file: !override ["${BENCH_ENV_FILE:?benchmark env file required}"]
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 128mb --maxmemory-policy noeviction"]
+    cpus: 1.0
+    mem_limit: 256m
+  caddy:
+    cpus: 1.0
+    mem_limit: 256m

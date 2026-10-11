@@ -74,6 +74,16 @@ The check uses [Compose attribute replacement](https://docs.docker.com/reference
 
 ## Development checks and dependency baseline
 
+For local redirect load testing and harness verification, see the
+[benchmark guide](benchmarks/README.md). It includes workload fixtures, a pinned
+generator, correctness thresholds, and archived results. Its one-command suite
+builds a disposable stack and compares Mongo-only with warmed Redis at matched rates.
+
+`CACHE_ENABLED` defaults to `true`. Set it to `false` to skip Redis initialization,
+reads and fills, using MongoDB directly while retaining the same HTTP contracts.
+The benchmark suite sets this explicitly; stopping Redis exercises failure fallback
+instead of the cache-disabled mode. Values must be exactly `true` or `false`.
+
 Use Go 1.27.1 and golangci-lint 2.14.0. CI reads the toolchain from `go.mod`; the Docker builder uses the same Go release and downloads locked modules without updating them. Run the following checks from the repository root:
 
 ```sh
